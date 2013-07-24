@@ -3,8 +3,8 @@ Created on Jun 4, 2013
 
 @author: kpaskov
 '''
-from model_new_schema import config as new_config
-from model_old_schema import config as old_config
+from schema_conversion import new_config
+from schema_conversion import old_config
 from schema_conversion import create_or_update_and_remove, ask_to_commit, \
     prepare_schema_connection, cache_by_key, create_format_name
 from sqlalchemy.orm import joinedload

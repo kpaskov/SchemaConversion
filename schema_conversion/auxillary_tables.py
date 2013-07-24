@@ -4,7 +4,7 @@ Created on May 28, 2013
 @author: kpaskov
 '''
 from schema_conversion import create_or_update_and_remove, cache_by_key, \
-    cache_by_id, cache_by_id_in_range, cache_by_key_in_range, cache_ids, \
+    cache_by_id, cache_by_key_in_range, \
     cache_ids_in_range
 
 def update_biocon_gene_counts(new_session, biocon_cls, evidence_cls):

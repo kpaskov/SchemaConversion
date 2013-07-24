@@ -5,8 +5,8 @@ Created on Jul 3, 2013
 '''
 
 from email.mime.text import MIMEText
-from model_new_schema import config as new_config
-from model_old_schema import config as old_config
+from schema_conversion import new_config
+from schema_conversion import old_config
 from schema_conversion import prepare_schema_connection, convert_reference, \
     convert_bioentity, convert_evelements, convert_interaction
 from schema_conversion.output_manager import output, write_to_output_file

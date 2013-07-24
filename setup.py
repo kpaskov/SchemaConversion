@@ -7,13 +7,11 @@ README = open(os.path.join(here, 'README.txt')).read()
 CHANGES = open(os.path.join(here, 'CHANGES.txt')).read()
 
 requires = [
+    'sprout_orm',
+    'bud_orm'
     ]
 
 tests_require = [
-    'bud_orm',
-    'sprout_orm',
-    'pyramid',
-    'waitress'
 ]
 
 setup(name='schema_conversion',

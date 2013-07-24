@@ -39,3 +39,6 @@ eggs/zc.recipe.egg-2.0.0-py2.7.egg
 eggs/zope.deprecation-4.0.2-py2.7.egg
 eggs/zope.interface-4.0.5-py2.7-macosx-10.6-x86_64.egg
 eggs/zope.sqlalchemy-0.7.2-py2.7.egg
+schema_conversion/config.py
+schema_conversion/old_config.py
+schema_conversion/new_config.py
