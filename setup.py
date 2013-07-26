@@ -27,6 +27,6 @@ setup(name='schema_conversion',
       install_requires=requires,
       entry_points="""\
       [paste.app_factory]
-      main = schema_conversion:main
+      main = schema_conversion.convert_all:main
       """,
       )
