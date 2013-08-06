@@ -103,7 +103,7 @@ def create_locus(old_bioentity):
         description = ann.description
         genetic_position = ann.genetic_position
     
-    bioent = NewLocus(old_bioentity.id, display_name, old_bioentity.name, old_bioentity.source, old_bioentity.status, 
+    bioent = NewLocus(old_bioentity.id, display_name, old_bioentity.name.upper(), old_bioentity.source, old_bioentity.status, 
                          locus_type, qualifier, attribute, short_description, headline, description, genetic_position, 
                          old_bioentity.date_created, old_bioentity.created_by)
     return bioent 
@@ -120,8 +120,8 @@ def create_dna(old_bioentity):
     
     display_name = old_bioentity.gene_name
     if display_name is None:
-        display_name = old_bioentity.name
-    format_name = old_bioentity.name + 'd'
+        display_name = old_bioentity.name + 'd'
+    format_name = old_bioentity.name.upper() + 'd'
     
     bioent = NewDNA(create_dna_id(old_bioentity.id), display_name, format_name, 
                         old_bioentity.date_created, old_bioentity.created_by)
@@ -139,8 +139,8 @@ def create_rna(old_bioentity):
     
     display_name = old_bioentity.gene_name
     if display_name is None:
-        display_name = old_bioentity.name
-    format_name = old_bioentity.name + 'r'
+        display_name = old_bioentity.name + 'r'
+    format_name = old_bioentity.name.upper() + 'r'
     
     bioent = NewRNA(create_rna_id(old_bioentity.id), display_name, format_name, 
                         old_bioentity.date_created, old_bioentity.created_by)
@@ -158,8 +158,8 @@ def create_protein(old_bioentity):
     
     display_name = old_bioentity.gene_name
     if display_name is None:
-        display_name = old_bioentity.name
-    format_name = old_bioentity.name + 'p'
+        display_name = old_bioentity.name + 'p'
+    format_name = old_bioentity.name.upper() + 'p'
     
     bioent = NewProtein(create_protein_id(old_bioentity.id), display_name, format_name, 
                         None, None, None, None, None, None, None, None, None, None, 
@@ -181,7 +181,7 @@ def create_bioentity(old_bioentity):
     if display_name is None:
         display_name = old_bioentity.name
     
-    bioent = NewBioentity(old_bioentity.id, display_name, old_bioentity.name, 'BIOENTITY', 
+    bioent = NewBioentity(old_bioentity.id, display_name, old_bioentity.name.upper(), 'BIOENTITY', 
                           old_bioentity.source, old_bioentity.status, 
                           old_bioentity.date_created, old_bioentity.created_by)
     return bioent 

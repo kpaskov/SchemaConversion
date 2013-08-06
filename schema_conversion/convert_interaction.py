@@ -176,57 +176,58 @@ def convert(old_session_maker, new_session_maker, ask=True):
     reference_id_to_link = cache_references(new_session)
     bioent_id_to_link = cache_link_by_id(NewBioentity, new_session)
         
-    # Convert genetic interevidences
-    write_to_output_file('GeneticInterevidences')
-    for i in range(0, len(intervals)-1):
-        min_id = intervals[i]
-        max_id = intervals[i+1]
-        write_to_output_file('Interaction ids between ' + str(min_id) + ' and ' + str(max_id))
-        execute_conversion(convert_genetic_interevidences, old_session_maker, new_session_maker, ask,
-                       min_id = lambda old_session : min_id,
-                       max_id = lambda old_session : max_id,
-                       experiment_key_to_link = lambda old_session: experiment_key_to_link,
-                       phenotype_key_to_link = lambda old_session: phenotype_key_to_link,
-                       reference_id_to_link = lambda old_session: reference_id_to_link,
-                       bioent_id_to_link = lambda old_session: bioent_id_to_link,
-                       old_interactions=lambda old_session: old_session.query(OldInteraction).filter(
-                                                            OldInteraction.id >= min_id).filter(
-                                                            OldInteraction.id < max_id).options(
-                                                            joinedload('interaction_references'),
-                                                            joinedload('interaction_phenotypes'),
-                                                            joinedload('feature_interactions')).all())
-      
-    # Convert physical interevidences
-    write_to_output_file( 'PhysicalInterevidences')
-    for i in range(0, len(intervals)-1):
-        min_id = intervals[i]
-        max_id = intervals[i+1]
-        write_to_output_file( 'Interaction ids between ' + str(min_id) + ' and ' + str(max_id))
-        execute_conversion(convert_physical_interevidences, old_session_maker, new_session_maker, ask,
-                       min_id = lambda old_session : min_id,
-                       max_id = lambda old_session : max_id,
-                       experiment_key_to_link = lambda old_session: experiment_key_to_link,
-                       reference_id_to_link = lambda old_session: reference_id_to_link,
-                       bioent_id_to_link = lambda old_session: bioent_id_to_link,
-                       old_interactions=lambda old_session: old_session.query(OldInteraction).filter(
-                                                            OldInteraction.id >= min_id).filter(
-                                                            OldInteraction.id < max_id).options(
-                                                            joinedload('interaction_references'),
-                                                            joinedload('feature_interactions')).all())
-      
-    # Create interactions for genetic_interactions
-    write_to_output_file( 'Genetic interactions')
-    execute_conversion(convert_interactions, old_session_maker, new_session_maker, ask,
-                       interaction_type = lambda old_session : 'GENETIC_INTERACTION',
-                       evidence_cls = lambda old_session : NewGeneticInterevidence)
+#    # Convert genetic interevidences
+#    write_to_output_file('GeneticInterevidences')
+#    for i in range(0, len(intervals)-1):
+#        min_id = intervals[i]
+#        max_id = intervals[i+1]
+#        write_to_output_file('Interaction ids between ' + str(min_id) + ' and ' + str(max_id))
+#        execute_conversion(convert_genetic_interevidences, old_session_maker, new_session_maker, ask,
+#                       min_id = lambda old_session : min_id,
+#                       max_id = lambda old_session : max_id,
+#                       experiment_key_to_link = lambda old_session: experiment_key_to_link,
+#                       phenotype_key_to_link = lambda old_session: phenotype_key_to_link,
+#                       reference_id_to_link = lambda old_session: reference_id_to_link,
+#                       bioent_id_to_link = lambda old_session: bioent_id_to_link,
+#                       old_interactions=lambda old_session: old_session.query(OldInteraction).filter(
+#                                                            OldInteraction.id >= min_id).filter(
+#                                                            OldInteraction.id < max_id).options(
+#                                                            joinedload('interaction_references'),
+#                                                            joinedload('interaction_phenotypes'),
+#                                                            joinedload('feature_interactions')).all())
+#      
+#    # Convert physical interevidences
+#    write_to_output_file( 'PhysicalInterevidences')
+#    for i in range(0, len(intervals)-1):
+#        min_id = intervals[i]
+#        max_id = intervals[i+1]
+#        write_to_output_file( 'Interaction ids between ' + str(min_id) + ' and ' + str(max_id))
+#        execute_conversion(convert_physical_interevidences, old_session_maker, new_session_maker, ask,
+#                       min_id = lambda old_session : min_id,
+#                       max_id = lambda old_session : max_id,
+#                       experiment_key_to_link = lambda old_session: experiment_key_to_link,
+#                       reference_id_to_link = lambda old_session: reference_id_to_link,
+#                       bioent_id_to_link = lambda old_session: bioent_id_to_link,
+#                       old_interactions=lambda old_session: old_session.query(OldInteraction).filter(
+#                                                            OldInteraction.id >= min_id).filter(
+#                                                            OldInteraction.id < max_id).options(
+#                                                            joinedload('interaction_references'),
+#                                                            joinedload('feature_interactions')).all())
+#      
+#    # Create interactions for genetic_interactions
+#    write_to_output_file( 'Genetic interactions')
+#    execute_conversion(convert_interactions, old_session_maker, new_session_maker, ask,
+#                       interaction_type = lambda old_session : 'GENETIC_INTERACTION',
+#                       evidence_cls = lambda old_session : NewGeneticInterevidence)
+#    
+#    # Create interactions for physical_interactions
+#    write_to_output_file( 'Physical interactions')
+#    execute_conversion(convert_interactions, old_session_maker, new_session_maker, ask,
+#                       interaction_type = lambda old_session : 'PHYSICAL_INTERACTION',
+#                       evidence_cls = lambda old_session : NewPhysicalInterevidence)
     
-    # Create interactions for physical_interactions
-    write_to_output_file( 'Physical interactions')
-    execute_conversion(convert_interactions, old_session_maker, new_session_maker, ask,
-                       interaction_type = lambda old_session : 'PHYSICAL_INTERACTION',
-                       evidence_cls = lambda old_session : NewPhysicalInterevidence)
-    
-    intervals = [0, 1000, 2000, 3000, 4000, 5000, 6000, 7000, 8000]
+    intervals = [#0, 50, 500, 1000, 1500, 2000, 2500, 3000, 3500, 
+                 4000, 4500, 5000, 5500, 6000, 6500, 7000, 7500, 8000]
     
     # Create interaction families
     write_to_output_file( 'Interaction families')

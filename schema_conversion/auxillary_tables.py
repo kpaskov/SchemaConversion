@@ -76,31 +76,52 @@ def convert_interaction_families(new_session, interaction_types, max_neighbors, 
     range_bioent_ids = cache_ids_in_range(NewBioentity, NewBioentity.id, new_session, min_id, max_id)
     key_to_interfams = cache_by_key_in_range(NewInteractionFamily, NewInteractionFamily.bioent_id, new_session, min_id, max_id)
     
-    bioent_id_to_neighbors = {}
-    for bioent_id in id_to_bioent.keys():
-        bioent_id_to_neighbors[bioent_id] = dict()
     
+    bioent_id_to_neighbor_ids = {}
+    edge_to_counts = {}
+    
+    all_interactions = dict()
     for interaction_type in interaction_types:
-        id_to_interaction = cache_by_id(NewInteraction, new_session, interaction_type=interaction_type)
+        all_interactions[interaction_type] = cache_by_id(NewInteraction, new_session, interaction_type=interaction_type)
+    
+    # Build a set of neighbors for every bioent.
+    for bioent_id in id_to_bioent.keys():
+        bioent_id_to_neighbor_ids[bioent_id] = set()
+        
+    for interaction_type in interaction_types:
+        id_to_interaction = all_interactions[interaction_type]
         for interaction in id_to_interaction.values():
             bioent1_id = interaction.bioent1_id
             bioent2_id = interaction.bioent2_id
-            if bioent2_id in bioent_id_to_neighbors[bioent1_id]:
-                bioent_id_to_neighbors[bioent1_id][bioent2_id] = bioent_id_to_neighbors[bioent1_id][bioent2_id] + interaction.evidence_count
+            if bioent2_id not in bioent_id_to_neighbor_ids[bioent1_id]:
+                bioent_id_to_neighbor_ids[bioent1_id].add(bioent2_id)
+            if bioent1_id not in bioent_id_to_neighbor_ids[bioent2_id]:
+                bioent_id_to_neighbor_ids[bioent2_id].add(bioent1_id)
+                
+    # Build a set of maximum counts (for each interaction_type and total) for each edge
+    for interaction_type in interaction_types:
+        id_to_interaction = all_interactions[interaction_type]
+        for interaction in id_to_interaction.values():
+            bioent1_id, bioent2_id = order_bioent_ids(interaction.bioent1_id, interaction.bioent2_id)
+            key = (bioent1_id, bioent2_id)
+            
+            if key not in edge_to_counts:
+                edge_to_counts[key]  = {interaction_type: interaction.evidence_count}
+            elif interaction_type in edge_to_counts[key]:
+                edge_to_counts[key][interaction_type] = edge_to_counts[key][interaction_type] + interaction.evidence_count
             else:
-                bioent_id_to_neighbors[bioent1_id][bioent2_id] = interaction.evidence_count
-            if bioent1_id in bioent_id_to_neighbors[bioent2_id]:
-                bioent_id_to_neighbors[bioent2_id][bioent1_id] = bioent_id_to_neighbors[bioent2_id][bioent1_id] + interaction.evidence_count
-            else:
-                bioent_id_to_neighbors[bioent2_id][bioent1_id] = interaction.evidence_count
-           
+                edge_to_counts[key][interaction_type] = interaction.evidence_count
+                
     interfams = []
                 
     for bioent_id in range_bioent_ids:
-        neighbors = bioent_id_to_neighbors[bioent_id]
+        neighbor_ids = bioent_id_to_neighbor_ids[bioent_id]
+        
+        # Calculate evidence cutoffs.
         evidence_cutoffs = [0, 0, 0, 0]
-        for evidence_count in neighbors.values():
-            index = min(evidence_count, 3)
+        for neighbor_id in neighbor_ids:
+            neigh_ev_count = sum(edge_to_counts[order_bioent_ids(bioent_id, neighbor_id)].values())
+            index = min(neigh_ev_count, 3)
             evidence_cutoffs[index] = evidence_cutoffs[index]+1
           
         if evidence_cutoffs[2] + evidence_cutoffs[3] > max_neighbors:
@@ -110,29 +131,41 @@ def convert_interaction_families(new_session, interaction_types, max_neighbors, 
         else:
             min_evidence_count = 1 
             
-        neighbor_ids = set([x for x, y in neighbors.iteritems() if y >= min_evidence_count]) 
-            
-        for neighbor_id, evidence_count in neighbors.iteritems():
-            if evidence_count >= min_evidence_count:
-                bioent1_id, bioent2_id = order_bioent_ids(bioent_id, neighbor_id)
-                bioent1 = id_to_bioent[bioent1_id]
-                bioent2 = id_to_bioent[bioent2_id]
-                interfams.append(NewInteractionFamily(bioent_id, bioent1_id, bioent2_id, 
-                                                          bioent1.display_name, bioent2.display_name, 
-                                                          bioent1.link, bioent2.link, evidence_count))
+        # Build a "Star Graph" with the bioent in the center and all neighbors with evidence above the cutoff connected to this
+        # center node.
+        cutoff_neighbor_ids = [neighbor_id for neighbor_id in neighbor_ids if sum(edge_to_counts[order_bioent_ids(bioent_id, neighbor_id)].values()) >= min_evidence_count]
+        for neighbor_id in cutoff_neighbor_ids:
+            bioent1_id, bioent2_id = order_bioent_ids(bioent_id, neighbor_id)
+            bioent1 = id_to_bioent[bioent1_id]
+            bioent2 = id_to_bioent[bioent2_id]
+            neigh_ev_counts = edge_to_counts[order_bioent_ids(bioent_id, neighbor_id)]
+            interfams.append(create_interaction_family(bioent_id, bioent1, bioent2, neigh_ev_counts))
                 
-                for neigh_of_neigh_id, evidence_count in bioent_id_to_neighbors[neighbor_id].iteritems():
-                    if evidence_count >= min_evidence_count and neigh_of_neigh_id in neighbor_ids:
-                        bioent1_id, bioent2_id = order_bioent_ids(neigh_of_neigh_id, neighbor_id)
-                        bioent1 = id_to_bioent[bioent1_id]
-                        bioent2 = id_to_bioent[bioent2_id]
-                        interfams.append(NewInteractionFamily(bioent_id, bioent1_id, bioent2_id, 
-                                                          bioent1.display_name, bioent2.display_name, 
-                                                          bioent1.link, bioent2.link, evidence_count))
-                        
-    values_to_check = ['bioent1_display_name', 'bioent2_display_name', 'bioent1_link', 'bioent2_link', 'evidence_count']
+        # Now add edges connecting nodes in the star.
+        for neighbor_id in cutoff_neighbor_ids:
+            for neigh_of_neigh_id in bioent_id_to_neighbor_ids[neighbor_id]:
+                neigh_of_neigh_ev_counts = edge_to_counts[order_bioent_ids(neighbor_id, neigh_of_neigh_id)]
+                neigh_of_neigh_ev_count = sum(neigh_of_neigh_ev_counts.values())
+                if neigh_of_neigh_ev_count >= min_evidence_count and neigh_of_neigh_id in cutoff_neighbor_ids:
+                    bioent1_id, bioent2_id = order_bioent_ids(neighbor_id, neigh_of_neigh_id)
+                    bioent1 = id_to_bioent[bioent1_id]
+                    bioent2 = id_to_bioent[bioent2_id]
+                    interfams.append(create_interaction_family(bioent_id, bioent1, bioent2, neigh_of_neigh_ev_counts))
+        
+    values_to_check = ['bioent1_display_name', 'bioent2_display_name', 'bioent1_link', 'bioent2_link', 'genetic_ev_count', 'physical_ev_count', 'evidence_count']
     success = create_or_update_and_remove(interfams, key_to_interfams, values_to_check, new_session)
     return success 
+
+def create_interaction_family(bioent_id, bioent1, bioent2, evidence_counts):
+    from model_new_schema.interaction import InteractionFamily as NewInteractionFamily
+    gen_count = 0 if 'PHYSICAL_INTERACTION' not in evidence_counts else evidence_counts['PHYSICAL_INTERACTION']
+    phys_count = 0 if 'GENETIC_INTERACTION' not in evidence_counts else evidence_counts['GENETIC_INTERACTION']
+    total_count = sum(evidence_counts.values())
+                
+    return NewInteractionFamily(bioent_id, bioent1.id, bioent2.id, 
+                                        bioent1.display_name, bioent2.display_name, 
+                                        bioent1.link, bioent2.link, gen_count, phys_count, total_count)
+
 
 def order_bioent_ids(bioent1_id, bioent2_id):
     if bioent1_id < bioent2_id:

@@ -112,10 +112,10 @@ def create_or_update(new_objs, mapping, values_to_check, session):
         return True
     
 def create_or_update_and_remove(new_objs, mapping, values_to_check, session, full_mapping=None):
-    if len(new_objs) > 150000:
-        print 'Too many objects!'
-        print len(new_objs)
-        raise Exception();
+#    if len(new_objs) > 150000:
+#        print 'Too many objects!'
+#        print len(new_objs)
+#        raise Exception();
     
     if full_mapping is None:
         full_mapping = mapping
