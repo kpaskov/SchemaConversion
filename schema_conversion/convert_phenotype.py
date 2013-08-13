@@ -8,7 +8,7 @@ from schema_conversion import old_config
 from schema_conversion import create_or_update_and_remove, ask_to_commit, \
     prepare_schema_connection, cache_by_key, cache_by_id, create_format_name, \
     create_or_update
-from schema_conversion.auxillary_tables import update_biocon_gene_counts, \
+from convert_perf.auxillary_tables import update_biocon_gene_counts, \
     convert_biocon_ancestors
 from sqlalchemy.orm import joinedload
 import datetime
@@ -101,6 +101,8 @@ def create_phenoevidence(old_phenotype_feature, key_to_reflink, key_to_phenotype
     if reference_id not in id_to_reference:
         print 'Reference does not exist. ' + str(reference_id)
         return None
+    reference_name_with_link = id_to_reference[reference_id].name_with_link
+    reference_citation = id_to_reference[reference_id].citation
     
     bioent_id = old_phenotype_feature.feature_id
     if bioent_id not in id_to_bioent:
@@ -118,8 +120,10 @@ def create_phenoevidence(old_phenotype_feature, key_to_reflink, key_to_phenotype
         print 'Experiment does not exist. ' + str(experiment_key)
         return None
     experiment_id = key_to_experiment[experiment_key].id
+    experiment_name_with_link = key_to_experiment[experiment_key].display_name
 
     strain_id = None
+    strain_name_with_link = None
     mutant_allele_id = None
     allele_info = None
     reporter = None 
@@ -145,6 +149,7 @@ def create_phenoevidence(old_phenotype_feature, key_to_reflink, key_to_phenotype
             print 'Strain does not exist. ' + str(strain_key)
             return None
         strain_id = key_to_strain[strain_key].id
+        strain_name_with_link = key_to_strain[strain_key].display_name
         
         allele_info = experiment.allele
         if allele_info is not None:
@@ -176,7 +181,9 @@ def create_phenoevidence(old_phenotype_feature, key_to_reflink, key_to_phenotype
             detail_info = ', '.join(details)
             details = detail_info
         
-    new_phenoevidence = NewPhenoevidence(evidence_id, experiment_id, reference_id, strain_id, old_phenotype_feature.source,
+    new_phenoevidence = NewPhenoevidence(evidence_id, experiment_id, experiment_name_with_link,
+                                         reference_id, reference_name_with_link, reference_citation,
+                                         strain_id, strain_name_with_link, old_phenotype_feature.source,
                                          bioent_id, biocon_id,
                                          mutant_allele_id, allele_info, 
                                          reporter, reporter_desc, strain_details, experiment_details, conditions, details,
@@ -463,7 +470,9 @@ def convert_phenoevidences(new_session, old_phenoevidences, old_reflinks):
     new_phenoevidences = [create_phenoevidence(old_phenoevidence, key_to_reflink, key_to_phenotype, id_to_reference, id_to_bioent, key_to_strain, key_to_experiment, key_to_allele)
                             for old_phenoevidence in old_phenoevidences]
    
-    values_to_check = ['experiment_type', 'reference_id', 'evidence_type', 'strain_id', 'source',
+    values_to_check = ['experiment_id', 'experiment_name_with_link', 
+                       'reference_id', 'reference_name_with_link', 'reference_citation', 
+                       'evidence_type', 'strain_id', 'strain_name_with_link', 'source',
                        'bioent_id', 'biocon_id', 'date_created', 'created_by',
                        'reporter', 'reporter_desc', 'strain_details', 
                        'conditions', 'details', 'experiment_details', 'allele_info', 'mutant_allele_id']

@@ -3,13 +3,12 @@ Created on Feb 27, 2013
 
 @author: kpaskov
 '''
-from schema_conversion import new_config
-from schema_conversion import old_config
 from schema_conversion import create_or_update_and_remove, \
     prepare_schema_connection, cache_by_key, cache_by_id, create_format_name, \
-    execute_conversion, cache_by_key_in_range
+    execute_conversion, cache_by_key_in_range, new_config, old_config
 from schema_conversion.output_manager import write_to_output_file
 from sqlalchemy.orm import joinedload
+from utils.link_maker import author_link, reference_link
 import model_new_schema
 import model_old_schema
 
@@ -61,7 +60,8 @@ def create_author(old_author):
     
     display_name = old_author.name
     format_name = create_format_name(display_name)
-    new_author = NewAuthor(old_author.id, display_name, format_name, old_author.date_created, old_author.created_by)
+    link = author_link(format_name)
+    new_author = NewAuthor(old_author.id, display_name, format_name, link, old_author.date_created, old_author.created_by)
     return new_author
 
 def create_author_reference(old_author_reference, key_to_author, id_to_reference):
@@ -128,7 +128,7 @@ def create_ref_url(old_ref_url, id_to_reference):
         print 'Reference does not exist. ' + str(reference_id)
         return None
     
-    new_ref_url = NewReferenceUrl(url, display_name, old_ref_url.url.source, reference_id, 
+    new_ref_url = NewReferenceUrl(display_name, old_ref_url.url.source, url, None, reference_id, 
                                   old_ref_url.url.date_created, old_ref_url.url.created_by)
     return new_ref_url
 
@@ -140,6 +140,8 @@ def create_reference(old_reference, key_to_journal, key_to_book):
     format_name = str(old_reference.pubmed_id)
     if format_name is None:
         format_name = old_reference.dbxref_id
+        
+    link = reference_link(format_name)
     
     abstract = None
     if old_reference.abst is not None:
@@ -178,8 +180,8 @@ def create_reference(old_reference, key_to_journal, key_to_book):
     if old_reference.date_revised is not None:
         date_revised = int(old_reference.date_revised)
     
-    new_ref = NewReference(old_reference.id, display_name, format_name,
-                           old_reference.source, old_reference.status, pubmed_id,
+    new_ref = NewReference(old_reference.id, display_name, format_name, link, old_reference.source, 
+                           old_reference.status, pubmed_id,
                            old_reference.pdf_status, citation, year, 
                            old_reference.date_published, date_revised, 
                            old_reference.issue, old_reference.page, old_reference.volume, old_reference.title,
@@ -187,8 +189,8 @@ def create_reference(old_reference, key_to_journal, key_to_book):
                            old_reference.date_created, old_reference.created_by)
     return new_ref
 
-def create_altids(old_reference, id_to_reference):
-    from model_new_schema.reference import ReferenceAltid as NewReferenceAltid
+def create_aliases(old_reference, id_to_reference):
+    from model_new_schema.reference import ReferenceAlias as NewReferenceAlias
     
     reference_id = old_reference.id
     if reference_id not in id_to_reference:
@@ -198,12 +200,12 @@ def create_altids(old_reference, id_to_reference):
     
     pubmed_id = old_reference.pubmed_id
     if pubmed_id is not None:
-        new_alt_ids.append(NewReferenceAltid(str(pubmed_id), 'Pubmed', 'Pubmed_ID', reference_id, 
+        new_alt_ids.append(NewReferenceAlias(str(pubmed_id), 'Pubmed', 'Pubmed_ID', reference_id, 
                                             old_reference.date_created, old_reference.created_by))
     for dbxref in old_reference.dbxrefs:
         identifier = dbxref.dbxref_id
         altid_name = dbxref.dbxref_type
-        new_alt_ids.append(NewReferenceAltid(identifier, 'SGD', altid_name, reference_id, 
+        new_alt_ids.append(NewReferenceAlias(identifier, 'SGD', altid_name, reference_id, 
                                             old_reference.date_created, old_reference.created_by))
     return new_alt_ids
 
@@ -241,9 +243,9 @@ def convert(old_session_maker, new_session_maker, ask=True):
                                             joinedload('journal'), 
                                             joinedload('abst')).all())
 
-    # Convert altids
-    write_to_output_file('Altids')
-    execute_conversion(convert_altids, old_session_maker, new_session_maker, ask,
+    # Convert aliases
+    write_to_output_file('Alias')
+    execute_conversion(convert_aliases, old_session_maker, new_session_maker, ask,
                        old_references=lambda old_session: old_session.query(OldReference).options(
                                             joinedload('dbxrefrefs')).all())
     
@@ -301,7 +303,8 @@ def convert_journals(new_session, old_journals=None):
     
     #Create new journals if they don't exist, or update the database if they do.
     new_journals = [create_journal(x) for x in old_journals]
-    success = create_or_update_and_remove(new_journals, key_to_journal, [], new_session)
+    values_to_check = ['issn', 'essn', 'publisher', 'created_by', 'date_created']
+    success = create_or_update_and_remove(new_journals, key_to_journal, values_to_check, new_session)
     return success
     
 def convert_books(new_session, old_books=None):
@@ -315,7 +318,7 @@ def convert_books(new_session, old_books=None):
     
     #Create new books if they don't exist, or update the database if they do.
     new_journals = [create_book(x) for x in old_books]
-    values_to_check = ['volume_title', 'isbn', 'total_pages', 'publisher', 'publisher_location', 'created_by', 'date_created']
+    values_to_check = ['isbn', 'total_pages', 'publisher', 'publisher_location', 'created_by', 'date_created']
     success = create_or_update_and_remove(new_journals, key_to_book, values_to_check, new_session)
     return success
     
@@ -332,33 +335,31 @@ def convert_references(new_session, old_references=None):
     
     #Create new references if they don't exist, or update the database if they do.
     new_references = [create_reference(x, key_to_journal, key_to_book) for x in old_references]
-    values_to_check = ['display_name', 'format_name',
-                       'source', 'status', 'pdf_status',
-                       'year', 
-                       'date_published', 
-                       'date_revised', 'name_with_link', 'citation', 'pubmed_id',
-                       'issue', 'page', 'volume', 'title', 'journal_id', 'book_id', 'doi', 'abstract',
+    values_to_check = ['display_name', 'format_name', 'link', 'source', 
+                       'status', 'pubmed_id', 'pdf_status', 'year', 'date_published', 
+                       'date_revised', 'issue', 'page', 'volume', 'title', 
+                       'journal_id', 'book_id', 'doi', 'abstract',
                        'created_by', 'date_created']
     success = create_or_update_and_remove(new_references, key_to_reference, values_to_check, new_session)
     return success
 
-def convert_altids(new_session, old_references=None):
+def convert_aliases(new_session, old_references=None):
     '''
     Convert Altids
     '''
-    from model_new_schema.reference import ReferenceAltid as NewReferenceAltid, Reference as NewReference
+    from model_new_schema.reference import ReferenceAlias as NewReferenceAlias, Reference as NewReference
 
     #Cache references, journals, and books
-    key_to_altids = cache_by_key(NewReferenceAltid, new_session)
+    key_to_aliases = cache_by_key(NewReferenceAlias, new_session)
     id_to_reference = cache_by_id(NewReference, new_session)
     
     #Create new altids if they don't exist, or update the database if they do.
-    new_altids = []
+    new_aliases = []
     for old_reference in old_references:
-        new_altids.extend(create_altids(old_reference, id_to_reference))
-    values_to_check = ['reference_id', 'source', 'altid_name', 'date_created', 'created_by']
+        new_aliases.extend(create_aliases(old_reference, id_to_reference))
+    values_to_check = ['alias_type', 'source', 'category', 'date_created', 'created_by']
     
-    success = create_or_update_and_remove(new_altids, key_to_altids, values_to_check, new_session)
+    success = create_or_update_and_remove(new_aliases, key_to_aliases, values_to_check, new_session)
     return success
     
 def convert_authors(new_session, old_authors=None):
@@ -372,7 +373,7 @@ def convert_authors(new_session, old_authors=None):
     
     #Create new authors if they don't exist, or update the database if they do.
     new_authors = [create_author(x) for x in old_authors]
-    values_to_check = ['created_by', 'date_created', 'display_name', 'format_name']
+    values_to_check = ['display_name', 'link', 'created_by', 'date_created']
     success = create_or_update_and_remove(new_authors, key_to_author, values_to_check, new_session)
     return success
     
@@ -435,7 +436,7 @@ def convert_urls(new_session, olf_ref_urls=None, min_id=None, max_id=None):
     
     #Create new refurls if they don't exist, or update the database if they do.
     new_ref_urls = [create_ref_url(x, id_to_reference) for x in olf_ref_urls]
-    success = create_or_update_and_remove(new_ref_urls, key_to_ref_url, ['source', 'date_created', 'created_by', 'reference_id'], new_session)    
+    success = create_or_update_and_remove(new_ref_urls, key_to_ref_url, ['display_name', 'category', 'source', 'date_created', 'created_by', 'reference_id'], new_session)    
     return success
    
 if __name__ == "__main__":

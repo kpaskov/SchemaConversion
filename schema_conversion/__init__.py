@@ -59,12 +59,7 @@ def cache_by_id(cls, session, **kwargs):
     return cache_entries
 
 def cache_link_by_id(cls, session, **kwargs):
-    cache_entries = dict([(x.id, x.name_with_link) for x in session.query(cls.id, cls.name_with_link).filter_by(**kwargs).all()])
-    return cache_entries
-
-def cache_references(session):
-    from model_new_schema.reference import Reference as NewReference
-    cache_entries = dict([(x.id, (x.name_with_link, x.citation)) for x in session.query(NewReference.id, NewReference.name_with_link, NewReference.citation).all()])
+    cache_entries = dict([(x.id, (x.name_with_link, x.display_name, x.link)) for x in session.query(cls.id, cls.name_with_link, cls.display_name, cls.link).filter_by(**kwargs).all()])
     return cache_entries
 
 def cache_by_id_in_range(cls, col, session, min_id, max_id, **kwargs):

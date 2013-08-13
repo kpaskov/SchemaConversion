@@ -4,11 +4,11 @@ Created on Jul 3, 2013
 @author: kpaskov
 '''
 
+from convert_core import convert_reference, convert_bioentity, \
+    convert_evelements
+from convert_evidence import convert_interaction, convert_literature
 from email.mime.text import MIMEText
-from schema_conversion import new_config
-from schema_conversion import old_config
-from schema_conversion import prepare_schema_connection, convert_reference, \
-    convert_bioentity, convert_evelements, convert_interaction
+from schema_conversion import new_config, old_config, prepare_schema_connection
 from schema_conversion.output_manager import output, write_to_output_file
 import model_new_schema
 import model_old_schema
@@ -71,6 +71,14 @@ if __name__ == "__main__":
     write_to_output_file( '----------------------------------------'  )
     try:
         convert_interaction.convert(old_session_maker, new_session_maker, ask=False)
+    except Exception:
+        write_to_output_file( "Unexpected error:" + str(sys.exc_info()[0]) )
+        
+    write_to_output_file( '----------------------------------------')
+    write_to_output_file( 'Convert Literature')
+    write_to_output_file( '----------------------------------------'  )
+    try:
+        convert_literature.convert(old_session_maker, new_session_maker, ask=False)
     except Exception:
         write_to_output_file( "Unexpected error:" + str(sys.exc_info()[0]) )
         
