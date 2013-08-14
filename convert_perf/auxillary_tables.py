@@ -4,8 +4,7 @@ Created on May 28, 2013
 @author: kpaskov
 '''
 from schema_conversion import create_or_update_and_remove, cache_by_key, \
-    cache_by_id, cache_by_key_in_range, \
-    cache_ids_in_range
+    cache_by_id, cache_by_key_in_range, cache_ids_in_range
 
 def update_biocon_gene_counts(new_session, biocon_cls, evidence_cls):
     '''
@@ -39,7 +38,7 @@ def create_interaction_format_name(bioent1, bioent2):
 
 def convert_interactions(new_session, interaction_type, evidence_cls):
     #Cache interactions
-    from model_new_schema.interaction import Interaction as NewInteraction
+    from model_new_schema.auxiliary import Interaction as NewInteraction
     from model_new_schema.bioentity import Bioentity as NewBioentity
     key_to_interactions = cache_by_key(NewInteraction, new_session, interaction_type=interaction_type)
     key_to_evidence = cache_by_key(evidence_cls, new_session)
@@ -57,19 +56,18 @@ def convert_interactions(new_session, interaction_type, evidence_cls):
             format_name_to_evidence_count[format_name] = format_name_to_evidence_count[format_name] + 1
         else:
             format_name_to_evidence_count[format_name] = 1
-        interaction = NewInteraction(evidence.id, format_name, format_name, interaction_type, bioent1_id, bioent2_id, 
-                                     bioent1.name_with_link, bioent2.name_with_link)
+        interaction = NewInteraction(evidence.id, interaction_type, format_name, format_name, bioent1_id, bioent2_id)
         new_interactions.append(interaction)
         
     for interaction in new_interactions:
         interaction.evidence_count = format_name_to_evidence_count[interaction.format_name]
         
-    values_to_check = ['display_name', 'bioent1_id', 'bioent2_id', 'bioent1_name_with_link', 'bioent2_name_with_link', 'evidence_count']
+    values_to_check = ['display_name', 'bioent1_id', 'bioent2_id', 'evidence_count']
     success = create_or_update_and_remove(new_interactions, key_to_interactions, values_to_check, new_session)
     return success          
             
 def convert_interaction_families(new_session, interaction_types, max_neighbors, min_id, max_id):
-    from model_new_schema.interaction import Interaction as NewInteraction, InteractionFamily as NewInteractionFamily
+    from model_new_schema.auxiliary import Interaction as NewInteraction, InteractionFamily as NewInteractionFamily
     from model_new_schema.bioentity import Bioentity as NewBioentity
     
     id_to_bioent = cache_by_id(NewBioentity, new_session)
@@ -152,19 +150,18 @@ def convert_interaction_families(new_session, interaction_types, max_neighbors, 
                     bioent2 = id_to_bioent[bioent2_id]
                     interfams.append(create_interaction_family(bioent_id, bioent1, bioent2, neigh_of_neigh_ev_counts))
         
-    values_to_check = ['bioent1_display_name', 'bioent2_display_name', 'bioent1_link', 'bioent2_link', 'genetic_ev_count', 'physical_ev_count', 'evidence_count']
+    values_to_check = ['genetic_ev_count', 'physical_ev_count', 'evidence_count']
     success = create_or_update_and_remove(interfams, key_to_interfams, values_to_check, new_session)
     return success 
 
 def create_interaction_family(bioent_id, bioent1, bioent2, evidence_counts):
-    from model_new_schema.interaction import InteractionFamily as NewInteractionFamily
+    from model_new_schema.auxiliary import InteractionFamily as NewInteractionFamily
+    
     gen_count = 0 if 'PHYSICAL_INTERACTION' not in evidence_counts else evidence_counts['PHYSICAL_INTERACTION']
     phys_count = 0 if 'GENETIC_INTERACTION' not in evidence_counts else evidence_counts['GENETIC_INTERACTION']
     total_count = sum(evidence_counts.values())
                 
-    return NewInteractionFamily(bioent_id, bioent1.id, bioent2.id, 
-                                        bioent1.display_name, bioent2.display_name, 
-                                        bioent1.link, bioent2.link, gen_count, phys_count, total_count)
+    return NewInteractionFamily(bioent_id, bioent1.id, bioent2.id, gen_count, phys_count, total_count)
 
 
 def order_bioent_ids(bioent1_id, bioent2_id):
@@ -173,10 +170,10 @@ def order_bioent_ids(bioent1_id, bioent2_id):
     else:
         return bioent2_id, bioent1_id
     
-def convert_gofact(new_session, key_to_evidence, key_to_bioconrels, min_id, max_id):
-    from model_new_schema.go import Gofact as NewGofact
+def convert_biofact(new_session, biocon_type, key_to_evidence, key_to_bioconrels, min_id, max_id):
+    from model_new_schema.auxiliary import Biofact as NewBiofact
     
-    key_to_biofacts = cache_by_key_in_range(NewGofact, NewGofact.biocon_id, new_session, min_id, max_id)
+    key_to_biofacts = cache_by_key_in_range(NewBiofact, NewBiofact.biocon_id, new_session, min_id, max_id, biocon_type=biocon_type)
     
     child_to_parents = {}
     for bioconrel in key_to_bioconrels.values():
@@ -195,7 +192,7 @@ def convert_gofact(new_session, key_to_evidence, key_to_bioconrels, min_id, max_
         while len(biocon_ids) > 0:
             for biocon_id in biocon_ids:
                 if biocon_id >= min_id and biocon_id < max_id:
-                    new_biofacts.add(NewGofact(evidence.bioent_id, biocon_id))
+                    new_biofacts.add(NewBiofact(evidence.bioent_id, biocon_id, biocon_type))
                 if biocon_id in child_to_parents:
                     next_gen_biocon_ids.update(child_to_parents[biocon_id])
             biocon_ids = set(next_gen_biocon_ids)
@@ -204,7 +201,8 @@ def convert_gofact(new_session, key_to_evidence, key_to_bioconrels, min_id, max_
     return success
 
 def convert_biocon_ancestors(new_session, bioconrel_type, num_generations):
-    from model_new_schema.bioconcept import BioconRelation as NewBioconRelation, BioconAncestor as NewBioconAncestor
+    from model_new_schema.bioconcept import BioconRelation as NewBioconRelation
+    from model_new_schema.auxiliary import BioconAncestor as NewBioconAncestor
     
     #Cache biocon_relations and biocon_ancestors
     key_to_biocon_relations = cache_by_key(NewBioconRelation, new_session, bioconrel_type=bioconrel_type)
@@ -240,3 +238,24 @@ def convert_biocon_ancestors(new_session, bioconrel_type, num_generations):
         create_or_update_and_remove(new_biocon_ancestors, key_to_biocon_ancestors, [], new_session) 
     return True
         
+def convert_bioent_references(new_session, evidences, bioent_ref_type, bioent_f, min_id, max_id):
+    
+    from model_new_schema.auxiliary import BioentReference as NewBioentReference
+    
+    key_to_bioent_reference = cache_by_key_in_range(NewBioentReference, NewBioentReference.bioent_id, new_session, min_id, max_id, bioent_ref_type=bioent_ref_type)
+    
+    new_bioent_refs = {}
+    for evidence in evidences:
+        reference_id = evidence.reference_id
+        bioent_ids = bioent_f(evidence)
+        for bioent_id in bioent_ids:
+            if reference_id is not None and bioent_id is not None and (bioent_id, reference_id) not in new_bioent_refs and bioent_id > min_id and bioent_id <= max_id:
+                new_bioent_ref = NewBioentReference(bioent_ref_type, bioent_id, reference_id)
+                new_bioent_refs[(bioent_id, reference_id)] = new_bioent_ref
+            
+    values_to_check = []
+    success = create_or_update_and_remove(new_bioent_refs.values(), key_to_bioent_reference, values_to_check, new_session)
+    return success 
+    
+    
+    

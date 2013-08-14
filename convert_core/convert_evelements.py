@@ -3,13 +3,12 @@ Created on Jun 4, 2013
 
 @author: kpaskov
 '''
-from schema_conversion import new_config
-from schema_conversion import old_config
 from schema_conversion import create_or_update_and_remove, \
     prepare_schema_connection, cache_by_key, create_format_name, create_or_update, \
-    execute_conversion
+    execute_conversion, new_config, old_config
 from schema_conversion.output_manager import write_to_output_file
 from sqlalchemy.orm import joinedload
+from utils.link_maker import experiment_link, strain_link
 import model_new_schema
 import model_old_schema
 
@@ -23,13 +22,14 @@ def create_experiment(old_cv_term):
     display_name = old_cv_term.name
     format_name = create_format_name(display_name)
     description = old_cv_term.definition
+    link = experiment_link(format_name)
     
-    new_experiment = NewExperiment(old_cv_term.id, display_name, format_name, description,
+    new_experiment = NewExperiment(old_cv_term.id, display_name, format_name, link, description,
                                old_cv_term.date_created, old_cv_term.created_by)
     return new_experiment
 
 def create_experiment_altids(old_cv_term, key_to_experiment):
-    from model_new_schema.evelement import ExperimentAltid as NewExperimentAltid
+    from model_new_schema.evelement import ExperimentAlias as NewExperimentAlias
     
     experiment_key = create_format_name(old_cv_term.name)
     if experiment_key not in key_to_experiment:
@@ -37,7 +37,7 @@ def create_experiment_altids(old_cv_term, key_to_experiment):
         return []
     experiment_id = key_to_experiment[experiment_key].id
     
-    new_altids = [NewExperimentAltid(dbxref.dbxref_id, 'SGD', 'APOID', experiment_id, 
+    new_altids = [NewExperimentAlias(dbxref.dbxref_id, 'SGD', 'APOID', experiment_id, 
                                    dbxref.date_created, dbxref.created_by) 
                   for dbxref in old_cv_term.dbxrefs]
     return new_altids
@@ -69,8 +69,9 @@ def create_strain(old_cv_term):
     display_name = old_cv_term.name
     format_name = create_format_name(display_name)
     description = old_cv_term.definition
+    link = strain_link(format_name)
     
-    new_strain = NewStrain(old_cv_term.id, display_name, format_name, description,
+    new_strain = NewStrain(old_cv_term.id, display_name, format_name, link, description,
                                old_cv_term.date_created, old_cv_term.created_by)
     return new_strain
      
@@ -89,7 +90,7 @@ def convert(old_session_maker, new_session_maker, ask=True):
         
     # Convert experiment altids
     write_to_output_file('Experiment Altid')
-    execute_conversion(convert_experiment_altids, old_session_maker, new_session_maker, ask,
+    execute_conversion(convert_experiment_aliases, old_session_maker, new_session_maker, ask,
                        old_cv_terms=lambda old_session: old_session.query(OldCVTerm).filter(OldCVTerm.cv_no==7).options(
                                                     joinedload('cv_dbxrefs'), 
                                                     joinedload('cv_dbxrefs.dbxref')).all())
@@ -118,27 +119,27 @@ def convert_experiments(new_session, old_cv_terms=None):
 
     #Create new experiments if they don't exist, or update the database if they do.
     new_experiments = [create_experiment(x) for x in old_cv_terms]
-    values_to_check = ['display_name', 'description', 'date_created', 'created_by']
+    values_to_check = ['display_name', 'link', 'description', 'date_created', 'created_by']
     success = create_or_update_and_remove(new_experiments, key_to_experiment, values_to_check, new_session)
     return success
 
-def convert_experiment_altids(new_session, old_cv_terms=None):
+def convert_experiment_aliases(new_session, old_cv_terms=None):
     '''
-    Convert Experiment Altids
+    Convert Experiment Aliases
     '''
-    from model_new_schema.evelement import Experiment as NewExperiment, ExperimentAltid as NewExperimentAltid
+    from model_new_schema.evelement import Experiment as NewExperiment, ExperimentAlias as NewExperimentAlia
     
-    #Cache altids
-    key_to_altid = cache_by_key(NewExperimentAltid, new_session)
+    #Cache alaises
+    key_to_alias = cache_by_key(NewExperimentAlia, new_session)
     key_to_experiment = cache_by_key(NewExperiment, new_session)
 
     #Create new altids if they don't exist, or update the database if they do.
-    new_altids = []
+    new_aliases = []
     for old_cv_term in old_cv_terms:
-        new_altids.extend(create_experiment_altids(old_cv_term, key_to_experiment))
+        new_aliases.extend(create_experiment_altids(old_cv_term, key_to_experiment))
         
-    values_to_check = ['experiment_id', 'source', 'altid_name', 'date_created', 'created_by']
-    success = create_or_update_and_remove(new_altids, key_to_altid, values_to_check, new_session)
+    values_to_check = ['source', 'category', 'date_created', 'created_by']
+    success = create_or_update_and_remove(new_aliases, key_to_alias, values_to_check, new_session)
     return success
 
 def convert_experiment_rels(new_session, old_cv_terms=None):
@@ -171,13 +172,13 @@ def convert_strains(new_session, old_cv_terms=None):
 
     #Create new experiments if they don't exist, or update the database if they do.
     new_strains = [create_strain(x) for x in old_cv_terms]
-    values_to_check = ['display_name', 'description', 'date_created', 'created_by']
+    values_to_check = ['display_name', 'link', 'description', 'date_created', 'created_by']
     success = create_or_update(new_strains, key_to_strain, values_to_check, new_session)
     return success
 
 if __name__ == "__main__":
     old_session_maker = prepare_schema_connection(model_old_schema, old_config)
     new_session_maker = prepare_schema_connection(model_new_schema, new_config)
-    convert(old_session_maker, new_session_maker)
+    convert(old_session_maker, new_session_maker, False)
     
 

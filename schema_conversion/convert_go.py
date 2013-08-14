@@ -3,14 +3,13 @@ Created on Feb 27, 2013
 
 @author: kpaskov
 '''
-from schema_conversion import new_config
-from schema_conversion import old_config
+from convert_perf.auxillary_tables import update_biocon_gene_counts, \
+    convert_biofact, convert_biocon_ancestors
 from schema_conversion import create_or_update_and_remove, \
-    prepare_schema_connection, cache_by_key, cache_by_id, create_format_name, \
-    execute_conversion, cache_references
-from schema_conversion.auxillary_tables import convert_biocon_ancestors, \
-    convert_gofact, update_biocon_gene_counts
+    prepare_schema_connection, cache_by_key, create_format_name, \
+    execute_conversion, new_config, old_config, cache_ids
 from schema_conversion.output_manager import write_to_output_file
+from utils.link_maker import biocon_link
 import model_new_schema
 import model_old_schema
 
@@ -36,7 +35,8 @@ def create_go(old_go):
     
     display_name = old_go.go_term
     format_name = create_format_name(display_name)
-    new_go = NewGo(create_go_id(old_go.id), display_name, format_name, old_go.go_definition,
+    link = biocon_link('GO', format_name)
+    new_go = NewGo(create_go_id(old_go.id), display_name, format_name, link, old_go.go_definition,
                    old_go.go_go_id, abbrev_to_go_aspect[old_go.go_aspect],  
                    old_go.date_created, old_go.created_by)
     return new_go
@@ -52,17 +52,16 @@ def create_synonyms(old_go, key_to_go):
     new_aliases = [NewBioconAlias(synonym.go_synonym, biocon_id, 'GO', synonym.date_created, synonym.created_by) for synonym in old_go.synonyms]
     return new_aliases
 
-def create_goevidence(old_go_feature, go_ref, key_to_go, reference_id_to_link, id_to_bioent):
+def create_goevidence(old_go_feature, go_ref, key_to_go, reference_ids, bioent_ids):
     from model_new_schema.go import Goevidence as NewGoevidence
     evidence_id = create_goevidence_id(go_ref.id)
     reference_id = go_ref.reference_id
-    if reference_id not in reference_id_to_link:
+    if reference_id not in reference_ids:
         print 'Reference does not exist. ' + str(reference_id)
         return None
-    reference_link, reference_citation = reference_id_to_link[reference_id]
     
     bioent_id = old_go_feature.feature_id
-    if bioent_id not in id_to_bioent:
+    if bioent_id not in bioent_ids:
         print 'Bioentity does not exist. ' + str(bioent_id)
         return None
     
@@ -75,10 +74,9 @@ def create_goevidence(old_go_feature, go_ref, key_to_go, reference_id_to_link, i
     qualifier = None
     if go_ref.go_qualifier is not None and go_ref.qualifier is not None:
         qualifier = go_ref.qualifier
-    return NewGoevidence(evidence_id, reference_id, reference_link, reference_citation,
-                                old_go_feature.source,
-                                old_go_feature.go_evidence, old_go_feature.annotation_type, qualifier, old_go_feature.date_last_reviewed, 
-                                bioent_id, biocon_id, go_ref.date_created, go_ref.created_by)
+    return NewGoevidence(evidence_id, reference_id, old_go_feature.source,
+                        old_go_feature.go_evidence, old_go_feature.annotation_type, qualifier, old_go_feature.date_last_reviewed, 
+                        bioent_id, biocon_id, go_ref.date_created, go_ref.created_by)
     return None
 
 def create_biocon_relation(go_path, id_to_old_go, key_to_go):
@@ -146,9 +144,10 @@ def convert(old_session_maker, new_session_maker, ask):
         min_id = intervals[i]
         max_id = intervals[i+1]
         write_to_output_file( 'Biocon ids between ' + str(min_id) + ' and ' + str(max_id))
-        execute_conversion(convert_gofact, old_session_maker, new_session_maker, ask,
+        execute_conversion(convert_biofact, old_session_maker, new_session_maker, ask,
                        key_to_evidence = lambda old_session: key_to_evidence,
                        key_to_bioconrels = lambda old_session: key_to_bioconrels,
+                       biocon_type = lambda old_session: 'GO',
                        min_id=lambda old_session: min_id,
                        max_id=lambda old_session: max_id)  
   
@@ -172,7 +171,7 @@ def convert_goterms(new_session, old_goterms):
     #Create new goterms if they don't exist, or update the database if they do.
     new_goterms = [create_go(x) for x in old_goterms]
     
-    values_to_check = ['go_go_id', 'go_aspect', 'biocon_type', 'display_name', 'format_name', 'description', 'date_created', 'created_by']
+    values_to_check = ['go_go_id', 'go_aspect', 'biocon_type', 'display_name', 'format_name', 'link', 'description', 'date_created', 'created_by']
     success = create_or_update_and_remove(new_goterms, key_to_go, values_to_check, new_session)
     return success
    
@@ -192,7 +191,7 @@ def convert_aliases(new_session, old_goterms):
         new_goterm_aliases.extend(create_synonyms(old_goterm, key_to_go))
         
     #Create new aliases if they don't exist of update the dataset if they do.
-    values_to_check = ['biocon_type', 'date_created', 'created_by']
+    values_to_check = ['alias_type', 'source', 'category', 'biocon_type', 'date_created', 'created_by']
     success = create_or_update_and_remove(new_goterm_aliases, key_to_alias, values_to_check, new_session)
     return success
     
@@ -202,22 +201,21 @@ def convert_goevidences(new_session, old_go_features):
     '''
     from model_new_schema.go import Goevidence as NewGoevidence, Go as NewGo
     from model_new_schema.bioentity import Bioentity as NewBioentity
+    from model_new_schema.reference import Reference as NewReference
     
     #Cache goevidences and goterms
     key_to_goevidence = cache_by_key(NewGoevidence, new_session)
     key_to_go = cache_by_key(NewGo, new_session)
-    id_to_reference = cache_references(new_session)
-    id_to_bioent = cache_by_id(NewBioentity, new_session)
+    reference_ids = cache_ids(NewReference, new_session)
+    bioent_ids = cache_ids(NewBioentity, new_session)
             
     #Create new goevidences if they don't exist, or update the database if they do.
     new_evidences = []
-    values_to_check = ['experiment_id', 'experiment_name_with_link',
-                       'reference_id', 'reference_name_with_link', 'reference_citation',
-                       'evidence_type', 'strain_id', 'strain_name_with_link', 'source',
+    values_to_check = ['experiment_id', 'reference_id', 'strain_id', 'source',
                        'go_evidence', 'annotation_type', 'date_last_reviewed', 'qualifier',
                        'bioent_id', 'biocon_id', 'date_created', 'created_by']
     for old_go_feature in old_go_features: 
-        new_evidences.extend([create_goevidence(old_go_feature, x, key_to_go, id_to_reference, id_to_bioent) for x in old_go_feature.go_refs])
+        new_evidences.extend([create_goevidence(old_go_feature, x, key_to_go, reference_ids, bioent_ids) for x in old_go_feature.go_refs])
     
     success = create_or_update_and_remove(new_evidences, key_to_goevidence, values_to_check, new_session)
     return success      
