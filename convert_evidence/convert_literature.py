@@ -3,7 +3,7 @@ Created on Jul 3, 2013
 
 @author: kpaskov
 '''
-from convert_perf.auxillary_tables import convert_bioent_references
+from convert_aux.auxillary_tables import convert_bioent_references
 from schema_conversion import create_or_update_and_remove, \
     prepare_schema_connection, execute_conversion, cache_by_key_in_range, \
     new_config, cache_by_key, old_config, cache_ids

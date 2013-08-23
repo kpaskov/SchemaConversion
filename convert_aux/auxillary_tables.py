@@ -4,7 +4,8 @@ Created on May 28, 2013
 @author: kpaskov
 '''
 from schema_conversion import create_or_update_and_remove, cache_by_key, \
-    cache_by_id, cache_by_key_in_range, cache_ids_in_range
+    cache_by_id, cache_by_key_in_range, cache_ids_in_range, cache_by_id_in_range
+from sqlalchemy.orm import joinedload
 
 def update_biocon_gene_counts(new_session, biocon_cls, evidence_cls):
     '''
@@ -29,6 +30,55 @@ def update_biocon_gene_counts(new_session, biocon_cls, evidence_cls):
             num_changed = num_changed + 1
     print 'In total ' + str(num_changed) + ' changed.'
     return True
+
+def create_reference_bibs(new_session, min_id, max_id):
+    from model_new_schema.reference import Reference, ReferenceBib
+    
+    key_to_refbib = cache_by_key_in_range(ReferenceBib, ReferenceBib.id, new_session, min_id, max_id)
+    references = cache_by_id_in_range(Reference, Reference.id, new_session, min_id, max_id).values()
+    
+    new_refbibs = [create_ref_bib(reference) for reference in references]
+    
+    values_to_check = ['bib_entry']
+    success = create_or_update_and_remove(new_refbibs, key_to_refbib, values_to_check, new_session)
+    return success   
+
+def create_ref_bib(reference):
+    from model_new_schema.reference import ReferenceBib
+    entries = []
+    entries.append('PMID- ' + str(reference.pubmed_id)) 
+    entries.append('STAT- ' + str(reference.status))
+    entries.append('DP  - ' + str(reference.date_published)) 
+    entries.append('TI  - ' + str(reference.title))
+    entries.append('SO  - ' + str(reference.source)) 
+    entries.append('LR  - ' + str(reference.date_revised)) 
+    entries.append('IP  - ' + str(reference.issue)) 
+    entries.append('PG  - ' + str(reference.page)) 
+    entries.append('VI  - ' + str(reference.volume)) 
+        
+    for author in reference.author_names:
+        entries.append('AU  - ' + author)
+    for reftype in reference.reftype_names:
+        entries.append('PT  - ' + reftype)
+        
+    if reference.abstract_obj is not None:
+        entries.append('AB  - ' + reference.abstract)
+        
+    if reference.journal is not None:
+        entries.append('TA  - ' + str(reference.journal.abbreviation)) 
+        entries.append('JT  - ' + str(reference.journal.full_name)) 
+        entries.append('IS  - ' + str(reference.journal.issn)) 
+
+        
+    if reference.book is not None:
+        entries.append('PL  - ' + str(reference.book.publisher_location)) 
+        entries.append('BTI - ' + str(reference.book.title))
+        entries.append('VTI - ' + str(reference.book.volume_title)) 
+        entries.append('ISBN- ' + str(reference.book.isbn))     
+    ref_bib = ReferenceBib(reference.id, '\n'.join(entries))
+    return ref_bib
+    
+    
 
 def create_interaction_format_name(bioent1, bioent2):
     if bioent1.id < bioent2.id:
@@ -157,8 +207,8 @@ def convert_interaction_families(new_session, interaction_types, max_neighbors, 
 def create_interaction_family(bioent_id, bioent1, bioent2, evidence_counts):
     from model_new_schema.auxiliary import InteractionFamily as NewInteractionFamily
     
-    gen_count = 0 if 'PHYSICAL_INTERACTION' not in evidence_counts else evidence_counts['PHYSICAL_INTERACTION']
-    phys_count = 0 if 'GENETIC_INTERACTION' not in evidence_counts else evidence_counts['GENETIC_INTERACTION']
+    phys_count = 0 if 'PHYSICAL_INTERACTION' not in evidence_counts else evidence_counts['PHYSICAL_INTERACTION']
+    gen_count = 0 if 'GENETIC_INTERACTION' not in evidence_counts else evidence_counts['GENETIC_INTERACTION']
     total_count = sum(evidence_counts.values())
                 
     return NewInteractionFamily(bioent_id, bioent1.id, bioent2.id, gen_count, phys_count, total_count)

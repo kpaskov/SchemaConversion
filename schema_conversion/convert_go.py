@@ -3,11 +3,11 @@ Created on Feb 27, 2013
 
 @author: kpaskov
 '''
-from convert_perf.auxillary_tables import update_biocon_gene_counts, \
-    convert_biofact, convert_biocon_ancestors
+from convert_aux.auxillary_tables import update_biocon_gene_counts, \
+    convert_biofact, convert_biocon_ancestors, convert_bioent_references
 from schema_conversion import create_or_update_and_remove, \
-    prepare_schema_connection, cache_by_key, create_format_name, \
-    execute_conversion, new_config, old_config, cache_ids
+    prepare_schema_connection, cache_by_key, create_format_name, execute_conversion, \
+    new_config, old_config, cache_ids
 from schema_conversion.output_manager import write_to_output_file
 from utils.link_maker import biocon_link
 import model_new_schema
@@ -158,6 +158,22 @@ def convert(old_session_maker, new_session_maker, ask):
     execute_conversion(convert_biocon_ancestors, old_session_maker, new_session_maker, ask,
                        bioconrel_type=lambda old_session:'GO_ONTOLOGY',
                        num_generations=lambda old_session:5)   
+    
+    intervals = [0, 1000, 2000, 3000, 4000, 5000, 6000, 7000, 8000, 9000]
+
+    go_evidences = key_to_evidence.values()   
+    # Create bioent_reference
+    write_to_output_file( 'Go Bioent_References')
+    for i in range(0, len(intervals)-1):
+        min_id = intervals[i]
+        max_id = intervals[i+1]
+        write_to_output_file( 'Bioent ids between ' + str(min_id) + ' and ' + str(max_id))
+        execute_conversion(convert_bioent_references, old_session_maker, new_session_maker, ask,
+                       min_id = lambda old_session : min_id,
+                       max_id = lambda old_session : max_id,
+                       evidences = lambda old_session: go_evidences,
+                       bioent_ref_type = lambda old_session: 'GO_EVIDENCE',
+                       bioent_f = lambda old_session: lambda x: [x.bioent_id])
 
 def convert_goterms(new_session, old_goterms):
     '''
