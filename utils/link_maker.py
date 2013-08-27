@@ -42,3 +42,8 @@ def experiment_link(format_name):
 def strain_link(format_name):
     #return '/strain/' + format_name
     return None
+
+#Allele links
+def allele_link(format_name):
+    #return '/allele/' + format_name
+    return None

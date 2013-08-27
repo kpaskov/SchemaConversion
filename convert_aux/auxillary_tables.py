@@ -91,6 +91,7 @@ def convert_interactions(new_session, interaction_type, evidence_cls):
     from model_new_schema.auxiliary import Interaction as NewInteraction
     from model_new_schema.bioentity import Bioentity as NewBioentity
     key_to_interactions = cache_by_key(NewInteraction, new_session, interaction_type=interaction_type)
+    #key_to_all_interactions = cache_by_id(NewInteraction, new_session)
     key_to_evidence = cache_by_key(evidence_cls, new_session)
     id_to_bioent = cache_by_id(NewBioentity, new_session)
     

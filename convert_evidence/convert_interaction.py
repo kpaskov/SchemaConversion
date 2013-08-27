@@ -150,7 +150,8 @@ def convert(old_session_maker, new_session_maker, ask=True):
     from model_new_schema.interaction import GeneticInterevidence as NewGeneticInterevidence, PhysicalInterevidence as NewPhysicalInterevidence
     
     intervals = [300000, 400000, 500000, 600000, 700000, 800000, 900000, 1000000, 1100000, 1200000, 1300000, 1400000]
-        
+    #At one point, manually removed evidence between 1332300 and 134000 because it was causing trouble - will need to look into this further.
+   
     from model_new_schema.bioentity import Bioentity as NewBioentity
     from model_new_schema.evelement import Experiment as NewExperiment
     from model_new_schema.phenotype import Phenotype as NewPhenotype
@@ -197,12 +198,12 @@ def convert(old_session_maker, new_session_maker, ask=True):
 #                                                            OldInteraction.id < max_id).options(
 #                                                            joinedload('interaction_references'),
 #                                                            joinedload('feature_interactions')).all())
-      
-    # Create interactions for genetic_interactions
-    write_to_output_file( 'Genetic interactions')
-    execute_conversion(convert_interactions, old_session_maker, new_session_maker, ask,
-                       interaction_type = lambda old_session : 'GENETIC_INTERACTION',
-                       evidence_cls = lambda old_session : NewGeneticInterevidence)
+#      
+#    # Create interactions for genetic_interactions
+#    write_to_output_file( 'Genetic interactions')
+#    execute_conversion(convert_interactions, old_session_maker, new_session_maker, ask,
+#                       interaction_type = lambda old_session : 'GENETIC_INTERACTION',
+#                       evidence_cls = lambda old_session : NewGeneticInterevidence)
     
     # Create interactions for physical_interactions
     write_to_output_file( 'Physical interactions')
