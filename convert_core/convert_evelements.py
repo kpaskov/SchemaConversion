@@ -29,7 +29,7 @@ def create_experiment(old_cv_term):
     return new_experiment
 
 def create_experiment_altids(old_cv_term, key_to_experiment):
-    from model_new_schema.evelement import ExperimentAlias as NewExperimentAlias
+    from model_new_schema.evelement import Experimentalias as NewExperimentalias
     
     experiment_key = create_format_name(old_cv_term.name)
     if experiment_key not in key_to_experiment:
@@ -37,7 +37,7 @@ def create_experiment_altids(old_cv_term, key_to_experiment):
         return []
     experiment_id = key_to_experiment[experiment_key].id
     
-    new_altids = [NewExperimentAlias(dbxref.dbxref_id, 'SGD', 'APOID', experiment_id, 
+    new_altids = [NewExperimentalias(dbxref.dbxref_id, 'SGD', 'APOID', experiment_id, 
                                    dbxref.date_created, dbxref.created_by) 
                   for dbxref in old_cv_term.dbxrefs]
     return new_altids
@@ -120,17 +120,17 @@ def convert_experiments(new_session, old_cv_terms=None):
     #Create new experiments if they don't exist, or update the database if they do.
     new_experiments = [create_experiment(x) for x in old_cv_terms]
     values_to_check = ['display_name', 'link', 'description', 'date_created', 'created_by']
-    success = create_or_update_and_remove(new_experiments, key_to_experiment, values_to_check, new_session)
+    success = create_or_update(new_experiments, key_to_experiment, values_to_check, new_session)
     return success
 
 def convert_experiment_aliases(new_session, old_cv_terms=None):
     '''
     Convert Experiment Aliases
     '''
-    from model_new_schema.evelement import Experiment as NewExperiment, ExperimentAlias as NewExperimentAlia
+    from model_new_schema.evelement import Experiment as NewExperiment, Experimentalias as NewExperimentalias
     
     #Cache alaises
-    key_to_alias = cache_by_key(NewExperimentAlia, new_session)
+    key_to_alias = cache_by_key(NewExperimentalias, new_session)
     key_to_experiment = cache_by_key(NewExperiment, new_session)
 
     #Create new altids if they don't exist, or update the database if they do.
@@ -139,7 +139,7 @@ def convert_experiment_aliases(new_session, old_cv_terms=None):
         new_aliases.extend(create_experiment_altids(old_cv_term, key_to_experiment))
         
     values_to_check = ['source', 'category', 'date_created', 'created_by']
-    success = create_or_update_and_remove(new_aliases, key_to_alias, values_to_check, new_session)
+    success = create_or_update(new_aliases, key_to_alias, values_to_check, new_session)
     return success
 
 def convert_experiment_rels(new_session, old_cv_terms=None):

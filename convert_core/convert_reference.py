@@ -298,6 +298,7 @@ def convert(old_session_maker, new_session_maker, ask=True):
                                             OldRef_URL.reference_id < max_id).options(
                                             joinedload('url'), 
                                             joinedload('reference')).all())
+
     write_to_output_file('Reference Bibs')
     for i in range(0, len(intervals)-1):
         min_id = intervals[i]
@@ -390,7 +391,7 @@ def convert_aliases(new_session, old_references=None):
     new_aliases = []
     for old_reference in old_references:
         new_aliases.extend(create_aliases(old_reference, id_to_reference))
-    values_to_check = ['alias_type', 'source', 'category', 'date_created', 'created_by']
+    values_to_check = ['source', 'category', 'date_created', 'created_by']
     
     success = create_or_update_and_remove(new_aliases, key_to_aliases, values_to_check, new_session)
     return success

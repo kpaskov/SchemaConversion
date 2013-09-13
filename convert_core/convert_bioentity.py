@@ -16,26 +16,26 @@ import model_old_schema
 """
 ---------------------Create------------------------------
 """
-other_bioent_types = set(['CHROMOSOME', 'PLASMID', 'ARS', 'CENTROMERE', 'TELOMERE', 
+other_bioentity_types = set(['CHROMOSOME', 'PLASMID', 'ARS', 'CENTROMERE', 'TELOMERE', 
                          'RETROTRANSPOSON'])
 
-locus_bioent_types = {'NCRNA', 'RRNA', 'SNRNA', 'SNORNA', 'TRNA', 'TRANSCRIPTION_FACTOR', 'ORF', 
+locus_bioentity_types = {'NCRNA', 'RRNA', 'SNRNA', 'SNORNA', 'TRNA', 'TRANSCRIPTION_FACTOR', 'ORF', 
                          'GENE_CASSETTE', 'MATING_LOCUS', 'MULTIGENE_LOCUS', 'PSEUDOGENE', 'TRANSPOSABLE_ELEMENT_GENE',
                          'NOT_IN_SYSTEMATIC_SEQUENCE_OF_S288C', 'NOT_PHYSICALLY_MAPPED'}
 
 def create_locus_type(old_feature_type):
-    bioent_type = old_feature_type.upper()
-    bioent_type = bioent_type.replace (" ", "_")
-    if bioent_type in locus_bioent_types:
-        return bioent_type
+    bioentity_type = old_feature_type.upper()
+    bioentity_type = bioentity_type.replace (" ", "_")
+    if bioentity_type in locus_bioentity_types:
+        return bioentity_type
     else:
         return None
     
-def create_bioent_type(old_feature_type):
-    bioent_type = old_feature_type.upper()
-    bioent_type = bioent_type.replace (" ", "_")
-    if bioent_type in other_bioent_types:
-        return bioent_type
+def create_bioentity_type(old_feature_type):
+    bioentity_type = old_feature_type.upper()
+    bioentity_type = bioentity_type.replace (" ", "_")
+    if bioentity_type in other_bioentity_types:
+        return bioentity_type
     else:
         return None
         
@@ -69,16 +69,16 @@ def create_locus(old_bioentity):
         description = ann.description
         genetic_position = ann.genetic_position
     
-    bioent = NewLocus(old_bioentity.id, display_name, format_name, link, old_bioentity.source, old_bioentity.status, 
+    bioentity = NewLocus(old_bioentity.id, display_name, format_name, link, old_bioentity.source, old_bioentity.status, 
                          locus_type, qualifier, attribute, short_description, headline, description, genetic_position, 
                          old_bioentity.date_created, old_bioentity.created_by)
-    return bioent 
+    return bioentity 
 
 def create_bioentity(old_bioentity):
     from model_new_schema.bioentity import Bioentity as NewBioentity
 
-    bioent_type = create_bioent_type(old_bioentity.type)
-    if bioent_type is None:
+    bioentity_type = create_bioentity_type(old_bioentity.type)
+    if bioentity_type is None:
         return None
     
     display_name = old_bioentity.gene_name
@@ -88,41 +88,41 @@ def create_bioentity(old_bioentity):
     format_name = old_bioentity.name.upper()
     link = bioent_link('BIOENTITY', format_name)
     
-    bioent = NewBioentity(old_bioentity.id, 'BIOENTITY', display_name, format_name, link, 
+    bioentity = NewBioentity(old_bioentity.id, 'BIOENTITY', display_name, format_name, link, 
                           old_bioentity.source, old_bioentity.status, 
                           old_bioentity.date_created, old_bioentity.created_by)
-    return bioent 
+    return bioentity 
 
 def create_alias(old_alias, id_to_bioentity):
-    from model_new_schema.bioentity import BioentAlias as NewBioentAlias
+    from model_new_schema.bioentity import Bioentityalias as NewBioentityalias
 
-    bioent_id = old_alias.feature_id
+    bioentity_id = old_alias.feature_id
     
-    if bioent_id is None or not bioent_id in id_to_bioentity:
+    if bioentity_id is None or not bioentity_id in id_to_bioentity:
         #print 'Bioentity does not exist.'
         return None
     
-    new_alias = NewBioentAlias(old_alias.alias_name, None, old_alias.alias_type, 
-                               bioent_id, old_alias.date_created, old_alias.created_by)
+    new_alias = NewBioentityalias(old_alias.alias_name, None, old_alias.alias_type, 
+                               bioentity_id, old_alias.date_created, old_alias.created_by)
     return new_alias 
 
 def create_dbxref_alias(old_altid, id_to_bioentity):
-    from model_new_schema.bioentity import BioentAlias as NewBioentAlias
+    from model_new_schema.bioentity import Bioentityalias as NewBioentityalias
 
-    bioent_id = old_altid.feature_id
+    bioentity_id = old_altid.feature_id
     dbxref = old_altid.dbxref
     
-    if bioent_id is None or not bioent_id in id_to_bioentity:
+    if bioentity_id is None or not bioentity_id in id_to_bioentity:
         #print 'Bioentity does not exist.'
         return None
     
-    new_alias = NewBioentAlias(dbxref.dbxref_id, dbxref.source, dbxref.dbxref_type, bioent_id, 
+    new_alias = NewBioentityalias(dbxref.dbxref_id, dbxref.source, dbxref.dbxref_type, bioentity_id, 
                                dbxref.date_created, dbxref.created_by)
     return new_alias 
 
 
 def create_url(old_url, id_to_bioentity):
-    from model_new_schema.bioentity import BioentUrl as NewBioentUrl
+    from model_new_schema.bioentity import Bioentityurl as NewBioentityurl
     
     url = old_url.url.url
     url_type = old_url.url.url_type
@@ -141,19 +141,19 @@ def create_url(old_url, id_to_bioentity):
         if potential_name != 'default' and (display_name is None or len(potential_name) > len(display_name)):
             display_name = potential_name
 
-    bioent_id = old_url.feature_id
-    if bioent_id not in id_to_bioentity:
+    bioentity_id = old_url.feature_id
+    if bioentity_id not in id_to_bioentity:
         #print 'Bioentity does not exist.'
         return None
     
-    new_url = NewBioentUrl(display_name, old_url.url.source, url, category, bioent_id, old_url.url.date_created, old_url.url.created_by)
+    new_url = NewBioentityurl(display_name, old_url.url.source, url, category, bioentity_id, old_url.url.date_created, old_url.url.created_by)
     return new_url 
 
 def create_dbxref_url(old_altid, id_to_bioentity):
-    from model_new_schema.bioentity import BioentUrl as NewBioentUrl
+    from model_new_schema.bioentity import Bioentityurl as NewBioentityurl
     
-    bioent_id = old_altid.feature_id
-    if bioent_id not in id_to_bioentity:
+    bioentity_id = old_altid.feature_id
+    if bioentity_id not in id_to_bioentity:
         #print 'Bioentity does not exist.'
         return []
             
@@ -170,7 +170,7 @@ def create_dbxref_url(old_altid, id_to_bioentity):
         for display in old_url.displays:
             display_name = display.label_name
             category = display.label_location
-            new_url = NewBioentUrl(display_name, old_url.source, url, category, bioent_id, old_url.date_created, old_url.created_by)
+            new_url = NewBioentityurl(display_name, old_url.source, url, category, bioentity_id, old_url.date_created, old_url.created_by)
             new_urls.append(new_url)
     return new_urls
 
@@ -246,7 +246,7 @@ def convert_other_bioentities(new_session, old_bioentity=None):
     from model_new_schema.bioentity import Bioentity as NewBioentity
     
     #Cache bioentities
-    key_to_bioentity = cache_by_key(NewBioentity, new_session, bioent_type='BIOENTITY')
+    key_to_bioentity = cache_by_key(NewBioentity, new_session, class_type='BIOENTITY')
     
     #Create new bioentities if they don't exist, or update the database if they do. 
     new_bioentities = [create_bioentity(x) for x in old_bioentity]
@@ -257,10 +257,10 @@ def convert_other_bioentities(new_session, old_bioentity=None):
 
 def convert_aliases(new_session, old_aliases, old_altids=None):
     
-    from model_new_schema.bioentity import Bioentity as NewBioentity, BioentAlias as NewBioentAlias
+    from model_new_schema.bioentity import Bioentity as NewBioentity, Bioentityalias as NewBioentityalias
     
     #Cache aliases
-    key_to_alias = cache_by_key(NewBioentAlias, new_session)
+    key_to_alias = cache_by_key(NewBioentityalias, new_session)
     id_to_bioentity = cache_by_id(NewBioentity, new_session)
     
     #Create new aliases if they don't exist, or update the database if they do. 
@@ -273,10 +273,10 @@ def convert_aliases(new_session, old_aliases, old_altids=None):
 
 def convert_urls(new_session, old_urls=None, old_altids=None, min_id=None, max_id=None):
     
-    from model_new_schema.bioentity import Bioentity as NewBioentity, BioentUrl as NewBioentUrl
+    from model_new_schema.bioentity import Bioentity as NewBioentity, Bioentityurl as NewBioentityurl
     
     #Cache urls
-    key_to_url = cache_by_key_in_range(NewBioentUrl, NewBioentUrl.bioent_id, new_session, min_id, max_id)
+    key_to_url = cache_by_key_in_range(NewBioentityurl, NewBioentityurl.bioentity_id, new_session, min_id, max_id)
     id_to_bioentity = cache_by_id(NewBioentity, new_session)
     
     #Create new urls if they don't exist, or update the database if they do. 

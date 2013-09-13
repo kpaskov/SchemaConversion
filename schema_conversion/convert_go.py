@@ -19,10 +19,10 @@ import model_old_schema
 """
 
 def create_go_id(old_go_id):
-    return old_go_id+87636
+    return old_go_id + 50000000
 
 def create_goevidence_id(old_evidence_id):
-    return old_evidence_id+1400000  
+    return old_evidence_id + 50000000
 
 def create_go_key(go_term):
     name = go_term.replace(' ', '_')
@@ -42,14 +42,14 @@ def create_go(old_go):
     return new_go
 
 def create_synonyms(old_go, key_to_go):
-    from model_new_schema.bioconcept import BioconAlias as NewBioconAlias
+    from model_new_schema.bioconcept import Bioconceptalias as NewBioconceptalias
     go_key = create_go_key(old_go.go_term)
     if go_key not in key_to_go:
         print 'GO term does not exist. ' + str(go_key)
         return []
     biocon_id = key_to_go[go_key].id
     
-    new_aliases = [NewBioconAlias(synonym.go_synonym, biocon_id, 'GO', synonym.date_created, synonym.created_by) for synonym in old_go.synonyms]
+    new_aliases = [NewBioconceptalias(synonym.go_synonym, biocon_id, 'GO', synonym.date_created, synonym.created_by) for synonym in old_go.synonyms]
     return new_aliases
 
 def create_goevidence(old_go_feature, go_ref, key_to_go, reference_ids, bioent_ids):
@@ -80,7 +80,7 @@ def create_goevidence(old_go_feature, go_ref, key_to_go, reference_ids, bioent_i
     return None
 
 def create_biocon_relation(go_path, id_to_old_go, key_to_go):
-    from model_new_schema.bioconcept import BioconRelation as NewBioconRelation
+    from model_new_schema.bioconcept import BioconceptRelation as NewBioconceptRelation
     if go_path.generation == 1:
         ancestor = id_to_old_go[go_path.ancestor_id]
         child = id_to_old_go[go_path.child_id]
@@ -88,7 +88,7 @@ def create_biocon_relation(go_path, id_to_old_go, key_to_go):
         parent_id = key_to_go[create_go_key(ancestor.go_term)].id
         child_id = key_to_go[create_go_key(child.go_term)].id
         relationship_type = go_path.relationship_type
-        return NewBioconRelation(parent_id, child_id, 'GO_ONTOLOGY', relationship_type)
+        return NewBioconceptRelation(parent_id, child_id, 'GO', relationship_type)
     else:
         return None
      
@@ -99,7 +99,7 @@ def create_biocon_relation(go_path, id_to_old_go, key_to_go):
 def convert(old_session_maker, new_session_maker, ask):
     from model_old_schema.go import Go as OldGo, GoFeature as OldGoFeature, GoPath as OldGoPath
     from model_new_schema.go import Go as NewGo, Goevidence as NewGoevidence
-    from model_new_schema.bioconcept import BioconRelation as NewBioconRelation
+    from model_new_schema.bioconcept import BioconceptRelation as NewBioconceptRelation
       
     # Convert goterms
     write_to_output_file( 'Go terms')
@@ -134,8 +134,8 @@ def convert(old_session_maker, new_session_maker, ask):
                  110000, 115000, 
                  120000, 125000, 130000]
     new_session = new_session_maker()
-    key_to_evidence = cache_by_key(NewGoevidence, new_session, evidence_type='GO_EVIDENCE')
-    key_to_bioconrels = cache_by_key(NewBioconRelation, new_session, bioconrel_type='GO_ONTOLOGY')
+    key_to_evidence = cache_by_key(NewGoevidence, new_session, class_type='GO')
+    key_to_bioconrels = cache_by_key(NewBioconceptRelation, new_session, class_type='GO')
     new_session.close()
     
     # Convert biofacts
@@ -156,7 +156,7 @@ def convert(old_session_maker, new_session_maker, ask):
     # biocon_ancestors - not clear why.
     write_to_output_file( 'Biocon_ancestors' )
     execute_conversion(convert_biocon_ancestors, old_session_maker, new_session_maker, ask,
-                       bioconrel_type=lambda old_session:'GO_ONTOLOGY',
+                       bioconrel_type=lambda old_session:'GO',
                        num_generations=lambda old_session:5)   
     
     intervals = [0, 1000, 2000, 3000, 4000, 5000, 6000, 7000, 8000, 9000]
@@ -172,7 +172,7 @@ def convert(old_session_maker, new_session_maker, ask):
                        min_id = lambda old_session : min_id,
                        max_id = lambda old_session : max_id,
                        evidences = lambda old_session: go_evidences,
-                       bioent_ref_type = lambda old_session: 'GO_EVIDENCE',
+                       bioent_ref_type = lambda old_session: 'GO',
                        bioent_f = lambda old_session: lambda x: [x.bioent_id])
 
 def convert_goterms(new_session, old_goterms):
@@ -187,7 +187,7 @@ def convert_goterms(new_session, old_goterms):
     #Create new goterms if they don't exist, or update the database if they do.
     new_goterms = [create_go(x) for x in old_goterms]
     
-    values_to_check = ['go_go_id', 'go_aspect', 'biocon_type', 'display_name', 'format_name', 'link', 'description', 'date_created', 'created_by']
+    values_to_check = ['go_go_id', 'go_aspect', 'display_name', 'link', 'description', 'date_created', 'created_by']
     success = create_or_update_and_remove(new_goterms, key_to_go, values_to_check, new_session)
     return success
    
@@ -196,10 +196,10 @@ def convert_aliases(new_session, old_goterms):
     Convert Goterms
     ''' 
     from model_new_schema.go import Go as NewGo
-    from model_new_schema.bioconcept import BioconAlias as NewBioconAlias
+    from model_new_schema.bioconcept import Bioconceptalias as NewBioconceptalias
 
     #Cache goterm aliases and goterms
-    key_to_alias = cache_by_key(NewBioconAlias, new_session, biocon_type='GO')
+    key_to_alias = cache_by_key(NewBioconceptalias, new_session, class_type='GO')
     key_to_go = cache_by_key(NewGo, new_session)    
     
     new_goterm_aliases = []
@@ -207,7 +207,7 @@ def convert_aliases(new_session, old_goterms):
         new_goterm_aliases.extend(create_synonyms(old_goterm, key_to_go))
         
     #Create new aliases if they don't exist of update the dataset if they do.
-    values_to_check = ['alias_type', 'source', 'category', 'biocon_type', 'date_created', 'created_by']
+    values_to_check = ['alias_type', 'source', 'category', 'class_type', 'date_created', 'created_by']
     success = create_or_update_and_remove(new_goterm_aliases, key_to_alias, values_to_check, new_session)
     return success
     
@@ -240,11 +240,11 @@ def convert_biocon_relations(new_session, old_go_paths, old_goterms):
     '''
     Convert Biocon_relations
     '''
-    from model_new_schema.bioconcept import BioconRelation as NewBioconRelation
+    from model_new_schema.bioconcept import BioconceptRelation as NewBioconceptRelation
     from model_new_schema.go import Go as NewGo
     
     #Cache biocon_relations and goterms
-    key_to_biocon_relations = cache_by_key(NewBioconRelation, new_session, bioconrel_type='GO_ONTOLOGY')
+    key_to_biocon_relations = cache_by_key(NewBioconceptRelation, new_session, bioconrel_type='GO')
     key_to_go = cache_by_key(NewGo, new_session)
     
     id_to_old_go = dict([(x.id, x) for x in old_goterms])

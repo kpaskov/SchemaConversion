@@ -74,6 +74,11 @@ def cache_ids_in_range(cls, col, session, min_id, max_id, **kwargs):
     cache_ids = [x.id for x in session.query(cls.id).filter(col >= min_id).filter(col < max_id).filter_by(**kwargs).all()]
     return cache_ids
     
+def cache_references_by_pubmed(session, **kwargs):
+    from model_new_schema.reference import Reference
+    cache_entries = dict([(x.pubmed_id, x) for x in session.query(Reference).filter_by(**kwargs).all()])
+    return cache_entries
+    
 def add_or_check(new_obj, mapping, key, values_to_check, session, output_creator):
     if key in mapping:
         current_obj = mapping[key]
@@ -193,5 +198,34 @@ def execute_conversion(convert_f, old_session_maker, new_session_maker, ask, **k
         raise
     finally:
         old_session.close()
-        new_session.close()    
+        new_session.close()  
+        
+def execute_conversion_file(convert_f, new_session_maker, ask, **kwargs):  
+    start_time = datetime.datetime.now()
+    try:
+        success = False
+        while not success:
+            new_session = new_session_maker()
+            success = convert_f(new_session, **kwargs)
+            if ask:
+                ask_to_commit(new_session, start_time)  
+            else:
+                commit_without_asking(new_session, start_time)
+            new_session.close()
+    except Exception:
+        write_to_output_file( "Unexpected error:" + str(sys.exc_info()[0]) )
+        raise
+    finally:
+        new_session.close()  
+        
+def break_up_file(filename):
+    rows = []
+    f = open(filename, 'r')
+    i = 0
+    for line in f:
+        rows.append((line.split('\t'), i))
+        i = i+1
+    f.close()
+    return rows
+    
         

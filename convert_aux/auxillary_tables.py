@@ -5,7 +5,6 @@ Created on May 28, 2013
 '''
 from schema_conversion import create_or_update_and_remove, cache_by_key, \
     cache_by_id, cache_by_key_in_range, cache_ids_in_range, cache_by_id_in_range
-from sqlalchemy.orm import joinedload
 
 def update_biocon_gene_counts(new_session, biocon_cls, evidence_cls):
     '''
@@ -32,19 +31,19 @@ def update_biocon_gene_counts(new_session, biocon_cls, evidence_cls):
     return True
 
 def create_reference_bibs(new_session, min_id, max_id):
-    from model_new_schema.reference import Reference, ReferenceBib
+    from model_new_schema.reference import Reference, Bibentry
     
-    key_to_refbib = cache_by_key_in_range(ReferenceBib, ReferenceBib.id, new_session, min_id, max_id)
+    key_to_refbib = cache_by_key_in_range(Bibentry, Bibentry.id, new_session, min_id, max_id)
     references = cache_by_id_in_range(Reference, Reference.id, new_session, min_id, max_id).values()
     
     new_refbibs = [create_ref_bib(reference) for reference in references]
     
-    values_to_check = ['bib_entry']
+    values_to_check = ['text']
     success = create_or_update_and_remove(new_refbibs, key_to_refbib, values_to_check, new_session)
     return success   
 
 def create_ref_bib(reference):
-    from model_new_schema.reference import ReferenceBib
+    from model_new_schema.reference import Bibentry
     entries = []
     entries.append('PMID- ' + str(reference.pubmed_id)) 
     entries.append('STAT- ' + str(reference.status))
@@ -75,7 +74,7 @@ def create_ref_bib(reference):
         entries.append('BTI - ' + str(reference.book.title))
         entries.append('VTI - ' + str(reference.book.volume_title)) 
         entries.append('ISBN- ' + str(reference.book.isbn))     
-    ref_bib = ReferenceBib(reference.id, '\n'.join(entries))
+    ref_bib = Bibentry(reference.id, '\n'.join(entries))
     return ref_bib
     
     
@@ -123,7 +122,7 @@ def convert_interaction_families(new_session, interaction_types, max_neighbors, 
     
     id_to_bioent = cache_by_id(NewBioentity, new_session)
     range_bioent_ids = cache_ids_in_range(NewBioentity, NewBioentity.id, new_session, min_id, max_id)
-    key_to_interfams = cache_by_key_in_range(NewInteractionFamily, NewInteractionFamily.bioent_id, new_session, min_id, max_id)
+    key_to_interfams = cache_by_key_in_range(NewInteractionFamily, NewInteractionFamily.bioentity_id, new_session, min_id, max_id)
     
     
     bioent_id_to_neighbor_ids = {}
@@ -224,7 +223,7 @@ def order_bioent_ids(bioent1_id, bioent2_id):
 def convert_biofact(new_session, biocon_type, key_to_evidence, key_to_bioconrels, min_id, max_id):
     from model_new_schema.auxiliary import Biofact as NewBiofact
     
-    key_to_biofacts = cache_by_key_in_range(NewBiofact, NewBiofact.biocon_id, new_session, min_id, max_id, biocon_type=biocon_type)
+    key_to_biofacts = cache_by_key_in_range(NewBiofact, NewBiofact.bioconcept_id, new_session, min_id, max_id, biocon_type=biocon_type)
     
     child_to_parents = {}
     for bioconrel in key_to_bioconrels.values():
@@ -252,11 +251,11 @@ def convert_biofact(new_session, biocon_type, key_to_evidence, key_to_bioconrels
     return success
 
 def convert_biocon_ancestors(new_session, bioconrel_type, num_generations):
-    from model_new_schema.bioconcept import BioconRelation as NewBioconRelation
-    from model_new_schema.auxiliary import BioconAncestor as NewBioconAncestor
+    from model_new_schema.bioconcept import BioconceptRelation as NewBioconceptRelation
+    from model_new_schema.auxiliary import BioconceptAncestor as NewBioconceptAncestor
     
     #Cache biocon_relations and biocon_ancestors
-    key_to_biocon_relations = cache_by_key(NewBioconRelation, new_session, bioconrel_type=bioconrel_type)
+    key_to_biocon_relations = cache_by_key(NewBioconceptRelation, new_session, bioconrel_type=bioconrel_type)
     
     child_to_parents = {}
     for biocon_relation in key_to_biocon_relations.values():
@@ -280,20 +279,20 @@ def convert_biocon_ancestors(new_session, bioconrel_type, num_generations):
     
     for generation in range(1, num_generations):
         print 'Generation ' + str(generation)
-        key_to_biocon_ancestors = cache_by_key(NewBioconAncestor, new_session, bioconanc_type=bioconrel_type, generation=generation)
+        key_to_biocon_ancestors = cache_by_key(NewBioconceptAncestor, new_session, bioconanc_type=bioconrel_type, generation=generation)
         new_biocon_ancestors = []    
 
         for child_id, all_ancestor_ids in child_to_ancestors.iteritems():
             this_generation = all_ancestor_ids[generation-1]
-            new_biocon_ancestors.extend([NewBioconAncestor(ancestor_id, child_id, bioconrel_type, generation) for ancestor_id in this_generation])
+            new_biocon_ancestors.extend([NewBioconceptAncestor(ancestor_id, child_id, bioconrel_type, generation) for ancestor_id in this_generation])
         create_or_update_and_remove(new_biocon_ancestors, key_to_biocon_ancestors, [], new_session) 
     return True
         
 def convert_bioent_references(new_session, evidences, bioent_ref_type, bioent_f, min_id, max_id):
     
-    from model_new_schema.auxiliary import BioentReference as NewBioentReference
+    from model_new_schema.auxiliary import BioentityReference as NewBioentityReference
     
-    key_to_bioent_reference = cache_by_key_in_range(NewBioentReference, NewBioentReference.bioent_id, new_session, min_id, max_id, bioent_ref_type=bioent_ref_type)
+    key_to_bioent_reference = cache_by_key_in_range(NewBioentityReference, NewBioentityReference.bioentity_id, new_session, min_id, max_id, bioent_ref_type=bioent_ref_type)
     
     new_bioent_refs = {}
     for evidence in evidences:
@@ -301,7 +300,7 @@ def convert_bioent_references(new_session, evidences, bioent_ref_type, bioent_f,
         bioent_ids = bioent_f(evidence)
         for bioent_id in bioent_ids:
             if reference_id is not None and bioent_id is not None and (bioent_id, reference_id) not in new_bioent_refs and bioent_id > min_id and bioent_id <= max_id:
-                new_bioent_ref = NewBioentReference(bioent_ref_type, bioent_id, reference_id)
+                new_bioent_ref = NewBioentityReference(bioent_ref_type, bioent_id, reference_id)
                 new_bioent_refs[(bioent_id, reference_id)] = new_bioent_ref
             
     values_to_check = []

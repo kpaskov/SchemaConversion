@@ -25,15 +25,18 @@ import model_old_schema
 ------------ Create --------------
 """
 
-def create_interevidence_id(old_evidence_id):
-    return old_evidence_id
+def create_geninterevidence_id(old_evidence_id):
+    return old_evidence_id - 397921 + 10000000
+
+def create_physinterevidence_id(old_evidence_id):
+    return old_evidence_id - 397664 + 20000000
 
 def create_genetic_interevidence(old_interaction, key_to_experiment, key_to_phenotype,
                          reference_ids, bioent_ids):
-    from model_new_schema.interaction import GeneticInterevidence as NewGeneticInterevidence
+    from model_new_schema.interaction import Geninteractionevidence as NewGeninteractionevidence
     
     if old_interaction.interaction_type == 'genetic interactions':
-        evidence_id = create_interevidence_id(old_interaction.id)
+        evidence_id = create_geninterevidence_id(old_interaction.id)
         reference_ids = old_interaction.reference_ids
         if len(reference_ids) != 1:
             print 'Too many references'
@@ -83,7 +86,7 @@ def create_genetic_interevidence(old_interaction, key_to_experiment, key_to_phen
         feat_interacts = sorted(old_interaction.feature_interactions, key=lambda x: x.feature_id)
         bait_hit = '-'.join([x.action for x in feat_interacts])
         
-        new_genetic_interevidence = NewGeneticInterevidence(evidence_id, experiment_id, reference_id, None, old_interaction.source, 
+        new_genetic_interevidence = NewGeninteractionevidence(evidence_id, experiment_id, reference_id, None, old_interaction.source, 
                                                             bioent1_id, bioent2_id, phenotype_id, 
                                                             old_interaction.annotation_type, bait_hit, note,
                                                             old_interaction.date_created, old_interaction.created_by)
@@ -92,9 +95,9 @@ def create_genetic_interevidence(old_interaction, key_to_experiment, key_to_phen
 
 def create_physical_interevidence(old_interaction, key_to_experiment,
                          reference_ids, bioent_ids):
-    from model_new_schema.interaction import PhysicalInterevidence as NewPhysicalInterevidence
+    from model_new_schema.interaction import Physinteractionevidence as NewPhysinteractionevidence
     if old_interaction.interaction_type == 'physical interactions':    
-        evidence_id = create_interevidence_id(old_interaction.id)
+        evidence_id = create_physinterevidence_id(old_interaction.id)
 
         reference_ids = old_interaction.reference_ids
         if len(reference_ids) != 1:
@@ -131,7 +134,7 @@ def create_physical_interevidence(old_interaction, key_to_experiment,
         feat_interacts = sorted(old_interaction.feature_interactions, key=lambda x: x.feature_id)
         bait_hit = '-'.join([x.action for x in feat_interacts])
             
-        new_genetic_interevidence = NewPhysicalInterevidence(evidence_id, experiment_id, reference_id, None, old_interaction.source,
+        new_genetic_interevidence = NewPhysinteractionevidence(evidence_id, experiment_id, reference_id, None, old_interaction.source,
                                                              bioent1_id, bioent2_id,
                                                              old_interaction.annotation_type,  old_interaction.modification, bait_hit, note,
                                                              old_interaction.date_created, old_interaction.created_by)
@@ -147,7 +150,7 @@ def convert(old_session_maker, new_session_maker, ask=True):
 
     from model_old_schema.interaction import Interaction as OldInteraction
     from model_new_schema.reference import Reference as NewReference
-    from model_new_schema.interaction import GeneticInterevidence as NewGeneticInterevidence, PhysicalInterevidence as NewPhysicalInterevidence
+    from model_new_schema.interaction import Geninteractionevidence as NewGeninteractionevidence, Physinteractionevidence as NewPhysinteractionevidence
     
     intervals = [300000, 400000, 500000, 600000, 700000, 800000, 900000, 1000000, 1100000, 1200000, 1300000, 1400000]
     #At one point, manually removed evidence between 1332300 and 134000 because it was causing trouble - will need to look into this further.
@@ -161,55 +164,55 @@ def convert(old_session_maker, new_session_maker, ask=True):
     reference_ids = cache_ids(NewReference, new_session)
     bioent_ids = cache_ids(NewBioentity, new_session)
         
-#    # Convert genetic interevidences
-#    write_to_output_file('GeneticInterevidences')
-#    for i in range(0, len(intervals)-1):
-#        min_id = intervals[i]
-#        max_id = intervals[i+1]
-#        write_to_output_file('Interaction ids between ' + str(min_id) + ' and ' + str(max_id))
-#        execute_conversion(convert_genetic_interevidences, old_session_maker, new_session_maker, ask,
-#                       min_id = lambda old_session : min_id,
-#                       max_id = lambda old_session : max_id,
-#                       key_to_experiment = lambda old_session: key_to_experiment,
-#                       key_to_phenotype = lambda old_session: key_to_phenotype,
-#                       reference_ids = lambda old_session: reference_ids,
-#                       bioent_ids = lambda old_session: bioent_ids,
-#                       old_interactions=lambda old_session: old_session.query(OldInteraction).filter(
-#                                                            OldInteraction.id >= min_id).filter(
-#                                                            OldInteraction.id < max_id).options(
-#                                                            joinedload('interaction_references'),
-#                                                            joinedload('interaction_phenotypes'),
-#                                                            joinedload('feature_interactions')).all())
-#      
-#    # Convert physical interevidences
-#    write_to_output_file( 'PhysicalInterevidences')
-#    for i in range(0, len(intervals)-1):
-#        min_id = intervals[i]
-#        max_id = intervals[i+1]
-#        write_to_output_file( 'Interaction ids between ' + str(min_id) + ' and ' + str(max_id))
-#        execute_conversion(convert_physical_interevidences, old_session_maker, new_session_maker, ask,
-#                       min_id = lambda old_session : min_id,
-#                       max_id = lambda old_session : max_id,
-#                       key_to_experiment = lambda old_session: key_to_experiment,
-#                       reference_ids = lambda old_session: reference_ids,
-#                       bioent_ids = lambda old_session: bioent_ids,
-#                       old_interactions=lambda old_session: old_session.query(OldInteraction).filter(
-#                                                            OldInteraction.id >= min_id).filter(
-#                                                            OldInteraction.id < max_id).options(
-#                                                            joinedload('interaction_references'),
-#                                                            joinedload('feature_interactions')).all())
-#      
-#    # Create interactions for genetic_interactions
-#    write_to_output_file( 'Genetic interactions')
-#    execute_conversion(convert_interactions, old_session_maker, new_session_maker, ask,
-#                       interaction_type = lambda old_session : 'GENETIC_INTERACTION',
-#                       evidence_cls = lambda old_session : NewGeneticInterevidence)
+    # Convert genetic interevidences
+    write_to_output_file('GeneticInterevidences')
+    for i in range(0, len(intervals)-1):
+        min_id = intervals[i]
+        max_id = intervals[i+1]
+        write_to_output_file('Interaction ids between ' + str(min_id) + ' and ' + str(max_id))
+        execute_conversion(convert_genetic_interevidences, old_session_maker, new_session_maker, ask,
+                       min_id = lambda old_session : min_id,
+                       max_id = lambda old_session : max_id,
+                       key_to_experiment = lambda old_session: key_to_experiment,
+                       key_to_phenotype = lambda old_session: key_to_phenotype,
+                       reference_ids = lambda old_session: reference_ids,
+                       bioent_ids = lambda old_session: bioent_ids,
+                       old_interactions=lambda old_session: old_session.query(OldInteraction).filter(
+                                                            OldInteraction.id >= min_id).filter(
+                                                            OldInteraction.id < max_id).options(
+                                                            joinedload('interaction_references'),
+                                                            joinedload('interaction_phenotypes'),
+                                                            joinedload('feature_interactions')).all())
+      
+    # Convert physical interevidences
+    write_to_output_file( 'PhysicalInterevidences')
+    for i in range(0, len(intervals)-1):
+        min_id = intervals[i]
+        max_id = intervals[i+1]
+        write_to_output_file( 'Interaction ids between ' + str(min_id) + ' and ' + str(max_id))
+        execute_conversion(convert_physical_interevidences, old_session_maker, new_session_maker, ask,
+                       min_id = lambda old_session : min_id,
+                       max_id = lambda old_session : max_id,
+                       key_to_experiment = lambda old_session: key_to_experiment,
+                       reference_ids = lambda old_session: reference_ids,
+                       bioent_ids = lambda old_session: bioent_ids,
+                       old_interactions=lambda old_session: old_session.query(OldInteraction).filter(
+                                                            OldInteraction.id >= min_id).filter(
+                                                            OldInteraction.id < max_id).options(
+                                                            joinedload('interaction_references'),
+                                                            joinedload('feature_interactions')).all())
+      
+    # Create interactions for genetic_interactions
+    write_to_output_file( 'Genetic interactions')
+    execute_conversion(convert_interactions, old_session_maker, new_session_maker, ask,
+                       interaction_type = lambda old_session : 'GENINTERACTION',
+                       evidence_cls = lambda old_session : NewGeninteractionevidence)
     
     # Create interactions for physical_interactions
     write_to_output_file( 'Physical interactions')
     execute_conversion(convert_interactions, old_session_maker, new_session_maker, ask,
-                       interaction_type = lambda old_session : 'PHYSICAL_INTERACTION',
-                       evidence_cls = lambda old_session : NewPhysicalInterevidence)
+                       interaction_type = lambda old_session : 'PHYSINTERACTION',
+                       evidence_cls = lambda old_session : NewPhysinteractionevidence)
    
     intervals = [0, 50, 500, 1000, 1500, 2000, 2500, 3000, 3500, 
                  4000, 4500, 5000, 5500, 6000, 6500, 7000, 7500, 8000]
@@ -224,9 +227,9 @@ def convert(old_session_maker, new_session_maker, ask=True):
                        min_id = lambda old_session : min_id,
                        max_id = lambda old_session : max_id,
                        max_neighbors = lambda old_session:100,
-                       interaction_types = lambda old_session:['GENETIC_INTERACTION', 'PHYSICAL_INTERACTION'])
+                       interaction_types = lambda old_session:['GENINTERACTION', 'PHYSINTERACTION'])
         
-    genetic_evidences = cache_by_key(NewGeneticInterevidence, new_session).values()
+    genetic_evidences = cache_by_key(NewGeninteractionevidence, new_session).values()
     # Create bioent_reference
     write_to_output_file( 'Genetic Interaction Bioent_References')
     for i in range(0, len(intervals)-1):
@@ -241,7 +244,7 @@ def convert(old_session_maker, new_session_maker, ask=True):
                        bioent_f = lambda old_session: lambda x: [x.bioent1_id, x.bioent2_id])
         
      
-    physical_evidences = cache_by_key(NewPhysicalInterevidence, new_session).values()   
+    physical_evidences = cache_by_key(NewPhysinteractionevidence, new_session).values()   
     # Create bioent_reference
     write_to_output_file( 'Physical Interaction Bioent_References')
     for i in range(0, len(intervals)-1):
@@ -260,18 +263,18 @@ def convert_genetic_interevidences(new_session, old_interactions, key_to_experim
     '''
     Convert Genetic Interevidences
     '''
-    from model_new_schema.interaction import GeneticInterevidence as NewGeneticInterevidence
+    from model_new_schema.interaction import Geninteractionevidence as NewGeninteractionevidence
 
     
     #Cache interevidences
-    key_to_interevidence = cache_by_key_in_range(NewGeneticInterevidence, NewGeneticInterevidence.id, new_session, min_id, max_id)
+    key_to_interevidence = cache_by_key_in_range(NewGeninteractionevidence, NewGeninteractionevidence.id, new_session, min_id, max_id)
 
     #Create new genetic interevidences if they don't exist, or update the database if they do.    
     new_genetic_interevidences = [create_genetic_interevidence(x, key_to_experiment, key_to_phenotype, reference_ids, bioent_ids)
                             for x in old_interactions]
    
     values_to_check = ['experiment_id', 'reference_id', 'strain_id', 'source',
-                       'bioent1_id', 'bioent2_id', 'phenotype_id', 
+                       'bioentity1_id', 'bioentity2_id', 'phenotype_id', 
                        'note', 'annotation_type', 'date_created', 'created_by']
     success = create_or_update_and_remove(new_genetic_interevidences, key_to_interevidence, values_to_check, new_session)
     return success
@@ -281,17 +284,17 @@ def convert_physical_interevidences(new_session, old_interactions, key_to_experi
     '''
     Convert Physical Interevidences
     '''
-    from model_new_schema.interaction import PhysicalInterevidence as NewPhysicalInterevidence
+    from model_new_schema.interaction import Physinteractionevidence as NewPhysinteractionevidence
     
     #Cache interevidences
-    key_to_interevidence = cache_by_key_in_range(NewPhysicalInterevidence, NewPhysicalInterevidence.id, new_session, min_id, max_id)
+    key_to_interevidence = cache_by_key_in_range(NewPhysinteractionevidence, NewPhysinteractionevidence.id, new_session, min_id, max_id)
 
     #Create new physical interevidences if they don't exist, or update the database if they do.    
     new_physical_interevidences = [create_physical_interevidence(x, key_to_experiment, reference_ids, bioent_ids)
                             for x in old_interactions]
    
     values_to_check = ['experiment_id', 'reference_id', 'strain_id', 'source',
-                       'bioent1_id', 'bioent2_id',
+                       'bioentity1_id', 'bioentity2_id',
                        'modification', 'note', 'annotation_type', 'date_created', 'created_by']
     success = create_or_update_and_remove(new_physical_interevidences, key_to_interevidence, values_to_check, new_session)
     return success
