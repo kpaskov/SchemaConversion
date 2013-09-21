@@ -4,7 +4,7 @@ Created on May 6, 2013
 @author: kpaskov
 '''
 from convert_aux.auxillary_tables import update_biocon_gene_counts, \
-    convert_biocon_ancestors, convert_bioent_references, convert_biofact
+    convert_biocon_ancestors, convert_biofact
 from schema_conversion import create_or_update_and_remove, \
     prepare_schema_connection, cache_by_key, cache_by_id, create_format_name, \
     create_or_update, new_config, execute_conversion, old_config

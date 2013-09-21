@@ -3,21 +3,25 @@ Created on May 31, 2013
 
 @author: kpaskov
 '''
-from schema_conversion import create_or_update_and_remove, \
-    prepare_schema_connection, cache_by_key, cache_by_id, cache_by_key_in_range, \
-    execute_conversion, new_config, old_config
-from schema_conversion.output_manager import write_to_output_file
+from convert_core import create_or_update
+from mpmath import ceil
+from schema_conversion import prepare_schema_connection, new_config, old_config
+from schema_conversion.output_manager import OutputCreator
 from sqlalchemy.orm import joinedload
 from utils.link_maker import bioent_link
+from datetime import datetime
+import logging
 import model_new_schema
 import model_old_schema
+import sys
 
+#Recorded times: 
+#Maitenance (cherry-vm08): 2:56, 2:59 
+#First Load (sgd-ng1): 4:08, 3:49
 
 """
----------------------Create------------------------------
+--------------------- Convert Locus ---------------------
 """
-other_bioentity_types = set(['CHROMOSOME', 'PLASMID', 'ARS', 'CENTROMERE', 'TELOMERE', 
-                         'RETROTRANSPOSON'])
 
 locus_bioentity_types = {'NCRNA', 'RRNA', 'SNRNA', 'SNORNA', 'TRNA', 'TRANSCRIPTION_FACTOR', 'ORF', 
                          'GENE_CASSETTE', 'MATING_LOCUS', 'MULTIGENE_LOCUS', 'PSEUDOGENE', 'TRANSPOSABLE_ELEMENT_GENE',
@@ -30,17 +34,9 @@ def create_locus_type(old_feature_type):
         return bioentity_type
     else:
         return None
-    
-def create_bioentity_type(old_feature_type):
-    bioentity_type = old_feature_type.upper()
-    bioentity_type = bioentity_type.replace (" ", "_")
-    if bioentity_type in other_bioentity_types:
-        return bioentity_type
-    else:
-        return None
-        
+
 def create_locus(old_bioentity):
-    from model_new_schema.bioentity import Locus as NewLocus
+    from model_new_schema.bioentity import Locus
     
     locus_type = create_locus_type(old_bioentity.type)
     if locus_type is None:
@@ -53,7 +49,6 @@ def create_locus(old_bioentity):
     format_name = old_bioentity.name.upper()
     link = bioent_link('LOCUS', format_name)
     
-    qualifier = None
     attribute = None
     short_description = None
     headline = None
@@ -62,22 +57,95 @@ def create_locus(old_bioentity):
     
     ann = old_bioentity.annotation
     if ann is not None:
-        qualifier = ann.qualifier
         attribute = ann.attribute
         short_description = ann.name_description
         headline = ann.headline
         description = ann.description
         genetic_position = ann.genetic_position
     
-    bioentity = NewLocus(old_bioentity.id, display_name, format_name, link, old_bioentity.source, old_bioentity.status, 
-                         locus_type, qualifier, attribute, short_description, headline, description, genetic_position, 
+    bioentity = Locus(old_bioentity.id, display_name, format_name, link, old_bioentity.source, old_bioentity.status, 
+                         locus_type, attribute, short_description, headline, description, genetic_position, 
                          old_bioentity.date_created, old_bioentity.created_by)
-    return bioentity 
+    return [bioentity]
 
-def create_bioentity(old_bioentity):
-    from model_new_schema.bioentity import Bioentity as NewBioentity
+def convert_locus(old_session_maker, new_session_maker):
+    from model_new_schema.bioentity import Locus as NewLocus
+    from model_old_schema.feature import Feature as OldFeature
+    
+    log = logging.getLogger('convert.bioentity.locus')
+    log.info('begin')
+    output_creator = OutputCreator(log)
+    
+    try:
+        #Grab all current objects
+        new_session = new_session_maker()
+        current_objs = new_session.query(NewLocus).all()
+        id_to_current_obj = dict([(x.id, x) for x in current_objs])
+        key_to_current_obj = dict([(x.unique_key(), x) for x in current_objs])
+                
+        #Values to check
+        values_to_check = ['display_name', 'link', 'source', 'status', 'date_created', 'created_by',
+                       'attribute', 'name_description', 'headline', 'description', 
+                       'genetic_position', 'locus_type']
+        
+        untouched_obj_ids = set(id_to_current_obj.keys())
+        
+        #Grab old objects
+        old_session = old_session_maker()
+        old_objs = old_session.query(OldFeature).options(joinedload('annotation')).all()
+        
+        for old_obj in old_objs:
+            #Convert old objects into new ones
+            newly_created_objs = create_locus(old_obj)
+                
+            if newly_created_objs is not None:
+                #Edit or add new objects
+                for newly_created_obj in newly_created_objs:
+                    current_obj_by_id = None if newly_created_obj.id not in id_to_current_obj else id_to_current_obj[newly_created_obj.id]
+                    current_obj_by_key = None if newly_created_obj.unique_key() not in key_to_current_obj else key_to_current_obj[newly_created_obj.unique_key()]
+                    create_or_update(newly_created_obj, current_obj_by_id, current_obj_by_key, values_to_check, new_session, output_creator)
+                    
+                    if current_obj_by_id is not None and current_obj_by_id.id in untouched_obj_ids:
+                        untouched_obj_ids.remove(current_obj_by_id.id)
+                    if current_obj_by_key is not None and current_obj_by_key.id in untouched_obj_ids:
+                        untouched_obj_ids.remove(current_obj_by_key.id)
+                        
+        #Delete untouched objs
+        for untouched_obj_id  in untouched_obj_ids:
+            new_session.delete(id_to_current_obj[untouched_obj_id])
+            output_creator.removed()
+        
+        #Commit
+        output_creator.finished()
+        new_session.commit()
+        
+    except Exception:
+        log.exception('Unexpected error:' + str(sys.exc_info()[0]))
+    finally:
+        new_session.close()
+        old_session.close()
+        
+    log.info('complete')
+    
+"""
+--------------------- Convert Generalbioentity ---------------------
+"""
+    
+general_bioentity_types = set(['CHROMOSOME', 'PLASMID', 'ARS', 'CENTROMERE', 'TELOMERE', 
+                         'RETROTRANSPOSON'])
+    
+def create_general_bioentity_type(old_feature_type):
+    bioentity_type = old_feature_type.upper()
+    bioentity_type = bioentity_type.replace (" ", "_")
+    if bioentity_type in general_bioentity_types:
+        return bioentity_type
+    else:
+        return None
+    
+def create_general_bioentity(old_bioentity):
+    from model_new_schema.bioentity import Generalbioentity
 
-    bioentity_type = create_bioentity_type(old_bioentity.type)
+    bioentity_type = create_general_bioentity_type(old_bioentity.type)
     if bioentity_type is None:
         return None
     
@@ -88,13 +156,74 @@ def create_bioentity(old_bioentity):
     format_name = old_bioentity.name.upper()
     link = bioent_link('BIOENTITY', format_name)
     
-    bioentity = NewBioentity(old_bioentity.id, 'BIOENTITY', display_name, format_name, link, 
+    bioentity = Generalbioentity(old_bioentity.id, 'BIOENTITY', display_name, format_name, link, 
                           old_bioentity.source, old_bioentity.status, 
                           old_bioentity.date_created, old_bioentity.created_by)
-    return bioentity 
+    return [bioentity]
+
+def convert_general_bioentity(old_session_maker, new_session_maker):
+    from model_new_schema.bioentity import Generalbioentity as NewGeneralbioentity
+    from model_old_schema.feature import Feature as OldFeature
+    
+    log = logging.getLogger('convert.bioentity.general_bioentity')
+    log.info('begin')
+    output_creator = OutputCreator(log)
+    
+    try:
+        #Grab all current objects
+        new_session = new_session_maker()
+        current_objs = new_session.query(NewGeneralbioentity).all()
+        id_to_current_obj = dict([(x.id, x) for x in current_objs])
+        key_to_current_obj = dict([(x.unique_key(), x) for x in current_objs])
+        
+        #Values to check
+        values_to_check = ['display_name', 'link', 'source', 'status', 'date_created', 'created_by']
+        
+        untouched_obj_ids = set(id_to_current_obj.keys())
+        
+        #Grab old objects
+        old_session = old_session_maker()
+        old_objs = old_session.query(OldFeature).options(joinedload('annotation')).all()
+        
+        for old_obj in old_objs:
+            #Convert old objects into new ones
+            newly_created_objs = create_general_bioentity(old_obj)
+                
+            if newly_created_objs is not None:
+                #Edit or add new objects
+                for newly_created_obj in newly_created_objs:
+                    current_obj_by_id = None if newly_created_obj.id not in id_to_current_obj else id_to_current_obj[newly_created_obj.id]
+                    current_obj_by_key = None if newly_created_obj.unique_key() not in key_to_current_obj else key_to_current_obj[newly_created_obj.unique_key()]
+                    create_or_update(newly_created_obj, current_obj_by_id, current_obj_by_key, values_to_check, new_session, output_creator)
+                    
+                    if current_obj_by_id is not None and current_obj_by_id.id in untouched_obj_ids:
+                        untouched_obj_ids.remove(current_obj_by_id.id)
+                    if current_obj_by_key is not None and current_obj_by_key.id in untouched_obj_ids:
+                        untouched_obj_ids.remove(current_obj_by_key.id)
+                        
+        #Delete untouched objs
+        for untouched_obj_id  in untouched_obj_ids:
+            new_session.delete(id_to_current_obj[untouched_obj_id])
+            output_creator.removed()
+        
+        #Commit
+        output_creator.finished()
+        new_session.commit()
+        
+    except Exception:
+        log.exception('Unexpected error:' + str(sys.exc_info()[0]))
+    finally:
+        new_session.close()
+        old_session.close()
+        
+    log.info('complete')
+    
+"""
+--------------------- Convert Alias ---------------------
+"""
 
 def create_alias(old_alias, id_to_bioentity):
-    from model_new_schema.bioentity import Bioentityalias as NewBioentityalias
+    from model_new_schema.bioentity import Bioentityalias
 
     bioentity_id = old_alias.feature_id
     
@@ -102,195 +231,288 @@ def create_alias(old_alias, id_to_bioentity):
         #print 'Bioentity does not exist.'
         return None
     
-    new_alias = NewBioentityalias(old_alias.alias_name, None, old_alias.alias_type, 
+    new_alias = Bioentityalias(old_alias.alias_name, None, old_alias.alias_type, 
                                bioentity_id, old_alias.date_created, old_alias.created_by)
-    return new_alias 
+    return [new_alias] 
 
-def create_dbxref_alias(old_altid, id_to_bioentity):
-    from model_new_schema.bioentity import Bioentityalias as NewBioentityalias
-
-    bioentity_id = old_altid.feature_id
-    dbxref = old_altid.dbxref
+def convert_alias(old_session_maker, new_session_maker):
+    from model_new_schema.bioentity import Bioentity as NewBioentity, Bioentityalias as NewBioentityalias
+    from model_old_schema.feature import AliasFeature as OldAliasFeature
     
-    if bioentity_id is None or not bioentity_id in id_to_bioentity:
-        #print 'Bioentity does not exist.'
-        return None
+    log = logging.getLogger('convert.bioentity.bioentity_alias')
+    log.info('begin')
+    output_creator = OutputCreator(log)
     
-    new_alias = NewBioentityalias(dbxref.dbxref_id, dbxref.source, dbxref.dbxref_type, bioentity_id, 
-                               dbxref.date_created, dbxref.created_by)
-    return new_alias 
-
-
-def create_url(old_url, id_to_bioentity):
-    from model_new_schema.bioentity import Bioentityurl as NewBioentityurl
-    
-    url = old_url.url.url
-    url_type = old_url.url.url_type
-    if url_type == 'query by SGDID':
-        url = url.replace('_SUBSTITUTE_THIS_', str(old_url.feature.dbxref_id))
-    elif url_type == 'query by SGD ORF name with anchor' or url_type == 'query by SGD ORF name':
-        url = url.replace('_SUBSTITUTE_THIS_', str(old_url.feature.name))
-    else:
-        print "Can't handle this url. " + old_url.url.url_id
+    try:
+        #Grab all current objects
+        new_session = new_session_maker()
+        current_objs = new_session.query(NewBioentityalias).all()
+        id_to_current_obj = dict([(x.id, x) for x in current_objs])
+        key_to_current_obj = dict([(x.unique_key(), x) for x in current_objs])
         
-    display_name = None
-    category = None
-    for display in old_url.url.displays:
-        potential_name = display.label_name
-        category = display.label_location
-        if potential_name != 'default' and (display_name is None or len(potential_name) > len(display_name)):
-            display_name = potential_name
-
-    bioentity_id = old_url.feature_id
-    if bioentity_id not in id_to_bioentity:
-        #print 'Bioentity does not exist.'
-        return None
-    
-    new_url = NewBioentityurl(display_name, old_url.url.source, url, category, bioentity_id, old_url.url.date_created, old_url.url.created_by)
-    return new_url 
-
-def create_dbxref_url(old_altid, id_to_bioentity):
-    from model_new_schema.bioentity import Bioentityurl as NewBioentityurl
-    
-    bioentity_id = old_altid.feature_id
-    if bioentity_id not in id_to_bioentity:
-        #print 'Bioentity does not exist.'
-        return []
-            
-    new_urls = []
-    for old_url in old_altid.dbxref.urls:
-        url = old_url.url
-        url_type = old_url.url_type
+        #Values to check
+        values_to_check = ['source', 'category', 'created_by', 'date_created']
         
-        if url_type == 'query by ID assigned by database' or url_type == 'query by SGDID':
-            url = url.replace('_SUBSTITUTE_THIS_', str(old_altid.dbxref.dbxref_id))
+        untouched_obj_ids = set(id_to_current_obj.keys())
+        
+        #Grab cached dictionaries
+        id_to_bioentity = dict([(x.id, x) for x in new_session.query(NewBioentity).all()])
+        
+        #Grab old objects
+        old_session = old_session_maker()
+        
+        #Grab old objects
+        old_objs = old_session.query(OldAliasFeature).options(joinedload('alias')).all()
+        
+        for old_obj in old_objs:
+            #Convert old objects into new ones
+            newly_created_objs = create_alias(old_obj, id_to_bioentity)
+                
+            if newly_created_objs is not None:
+                #Edit or add new objects
+                for newly_created_obj in newly_created_objs:
+                    current_obj_by_id = None if newly_created_obj.id not in id_to_current_obj else id_to_current_obj[newly_created_obj.id]
+                    current_obj_by_key = None if newly_created_obj.unique_key() not in key_to_current_obj else key_to_current_obj[newly_created_obj.unique_key()]
+                    create_or_update(newly_created_obj, current_obj_by_id, current_obj_by_key, values_to_check, new_session, output_creator)
+                    
+                    if current_obj_by_id is not None and current_obj_by_id.id in untouched_obj_ids:
+                        untouched_obj_ids.remove(current_obj_by_id.id)
+                    if current_obj_by_key is not None and current_obj_by_key.id in untouched_obj_ids:
+                        untouched_obj_ids.remove(current_obj_by_key.id)
+                        
+        #Delete untouched objs
+        for untouched_obj_id  in untouched_obj_ids:
+            new_session.delete(id_to_current_obj[untouched_obj_id])
+            output_creator.removed()
+        
+        #Commit
+        output_creator.finished()
+        new_session.commit()
+        
+    except Exception:
+        log.exception('Unexpected error:' + str(sys.exc_info()[0]))
+    finally:
+        new_session.close()
+        old_session.close()
+        
+    log.info('complete')
+    
+"""
+--------------------- Convert Url ---------------------
+"""
+
+def create_url(old_feat_url, old_webdisplay, id_to_bioentity):
+    from model_new_schema.bioentity import Bioentityurl
+    
+    urls = []
+    
+    old_url = old_webdisplay.url
+    url_type = old_url.url_type
+    link = old_url.url
+    
+    feature = old_feat_url.feature
+    if feature.id in id_to_bioentity:
+        if url_type == 'query by SGDID':
+            link = link.replace('_SUBSTITUTE_THIS_', str(feature.dbxref_id))
+            urls.append(Bioentityurl(old_webdisplay.label_name, old_url.source, link, old_webdisplay.label_location, 
+                                     feature.id, old_url.date_created, old_url.created_by))
+        elif url_type == 'query by SGD ORF name with anchor' or url_type == 'query by SGD ORF name' or url_type == 'query by ID assigned by database':
+            link = link.replace('_SUBSTITUTE_THIS_', str(feature.name))
+            urls.append(Bioentityurl(old_webdisplay.label_name, old_url.source, link, old_webdisplay.label_location, 
+                                     feature.id, old_url.date_created, old_url.created_by))
         else:
-            print "Can't handle this url. " + str(old_url.id)
+            print "Can't handle this url. " + str(old_url.url_type)
+    return urls
+
+def convert_url(old_session_maker, new_session_maker, chunk_size):
+    from model_new_schema.bioentity import Bioentity as NewBioentity, Bioentityurl as NewBioentityurl
+    from model_old_schema.general import WebDisplay as OldWebDisplay, FeatUrl as OldFeatUrl
+    
+    log = logging.getLogger('convert.bioentity.bioentity_url')
+    log.info('begin')
+    output_creator = OutputCreator(log)
+    
+    try:
+        new_session = new_session_maker()
+        old_session = old_session_maker()
         
-        for display in old_url.displays:
-            display_name = display.label_name
-            category = display.label_location
-            new_url = NewBioentityurl(display_name, old_url.source, url, category, bioentity_id, old_url.date_created, old_url.created_by)
-            new_urls.append(new_url)
-    return new_urls
+        #Values to check
+        values_to_check = ['display_name', 'source', 'created_by', 'date_created']
+        
+        #Grab cached dictionaries
+        id_to_bioentity = dict([(x.id, x) for x in new_session.query(NewBioentity).all()])
+        
+        #Urls of interest
+        old_web_displays = old_session.query(OldWebDisplay).filter(OldWebDisplay.label_location == 'Interaction Resources').all()
+        url_to_display = dict([(x.url_id, x) for x in old_web_displays])
+                
+        count = max(id_to_bioentity.keys())
+        num_chunks = ceil(1.0*count/chunk_size)
+        min_id = 0
+        for i in range(0, num_chunks):
+            #Grab all current objects
+            current_objs = new_session.query(NewBioentityurl).filter(NewBioentityurl.bioentity_id >= min_id).filter(NewBioentityurl.bioentity_id < min_id+chunk_size).all()
+            id_to_current_obj = dict([(x.id, x) for x in current_objs])
+            key_to_current_obj = dict([(x.unique_key(), x) for x in current_objs])
+        
+            untouched_obj_ids = set(id_to_current_obj.keys())
+        
+            #Grab old objects
+            old_objs = old_session.query(OldFeatUrl).filter(OldFeatUrl.feature_id >= min_id).filter(OldFeatUrl.feature_id < min_id+chunk_size).options(joinedload('url')).all()
+            
+            for old_obj in old_objs:
+                #Convert old objects into new ones
+                if old_obj.url_id in url_to_display:
+                    newly_created_objs = create_url(old_obj, url_to_display[old_obj.url_id], id_to_bioentity)
+                    
+                    if newly_created_objs is not None:
+                        #Edit or add new objects
+                        for newly_created_obj in newly_created_objs:
+                            current_obj_by_id = None if newly_created_obj.id not in id_to_current_obj else id_to_current_obj[newly_created_obj.id]
+                            current_obj_by_key = None if newly_created_obj.unique_key() not in key_to_current_obj else key_to_current_obj[newly_created_obj.unique_key()]
+                            create_or_update(newly_created_obj, current_obj_by_id, current_obj_by_key, values_to_check, new_session, output_creator)
+                        
+                            if current_obj_by_id is not None and current_obj_by_id.id in untouched_obj_ids:
+                                untouched_obj_ids.remove(current_obj_by_id.id)
+                            if current_obj_by_key is not None and current_obj_by_key.id in untouched_obj_ids:
+                                untouched_obj_ids.remove(current_obj_by_key.id)
+                                
+            #Delete untouched objs
+            for untouched_obj_id  in untouched_obj_ids:
+                new_session.delete(id_to_current_obj[untouched_obj_id])
+                output_creator.removed()
+                        
+            output_creator.finished(str(i+1) + "/" + str(int(num_chunks)))
+            new_session.commit()
+            min_id = min_id + chunk_size
+        
+    except Exception:
+        log.exception('Unexpected error:' + str(sys.exc_info()[0]))
+    finally:
+        new_session.close()
+        old_session.close()
+        
+    log.info('complete')
+    
+"""
+--------------------- Convert Qualifier Evidence ---------------------
+"""
+    
+def create_qualifier_evidence_id(old_feature_id):
+    return old_feature_id + 70000000
+
+def create_qualifier_evidence(old_bioentity, id_to_bioentity):
+    from model_new_schema.bioentity import Qualifierevidence
+    
+    ann = old_bioentity.annotation
+    if ann is None:
+        return None
+    qualifier = ann.qualifier
+    
+    bioentity_id = old_bioentity.id
+    if bioentity_id not in id_to_bioentity:
+        return None
+    
+    #strain_id of S288C
+    strain_id = 1
+    
+    qualifierevidence = Qualifierevidence(create_qualifier_evidence_id(old_bioentity.id), strain_id, bioentity_id, qualifier,
+                                          old_bioentity.date_created, old_bioentity.created_by)
+    return [qualifierevidence]
+
+def convert_qualifier_evidence(old_session_maker, new_session_maker):
+    from model_new_schema.bioentity import Qualifierevidence as NewQualifierevidence, Bioentity as NewBioentity
+    from model_old_schema.feature import Feature as OldFeature
+    
+    log = logging.getLogger('convert.bioentity.qualifier_evidence')
+    log.info('begin')
+    output_creator = OutputCreator(log)
+    
+    try:
+        #Grab all current objects
+        new_session = new_session_maker()
+        current_objs = new_session.query(NewQualifierevidence).all()
+        id_to_current_obj = dict([(x.id, x) for x in current_objs])
+        key_to_current_obj = dict([(x.unique_key(), x) for x in current_objs])
+                
+        #Values to check
+        values_to_check = ['reference_id', 'experiment_id', 'strain', 'source', 'date_created', 'created_by',
+                           'bioentity_id', 'qualifier']
+        
+        untouched_obj_ids = set(id_to_current_obj.keys())
+        
+        #Grab cached dictionaries
+        id_to_bioentity = dict([(x.id, x) for x in new_session.query(NewBioentity).all()])
+        
+        #Grab old objects
+        old_session = old_session_maker()
+        old_objs = old_session.query(OldFeature).options(joinedload('annotation'))
+        
+        for old_obj in old_objs:
+            #Convert old objects into new ones
+            newly_created_objs = create_qualifier_evidence(old_obj, id_to_bioentity)
+                
+            if newly_created_objs is not None:
+                #Edit or add new objects
+                for newly_created_obj in newly_created_objs:
+                    current_obj_by_id = None if newly_created_obj.id not in id_to_current_obj else id_to_current_obj[newly_created_obj.id]
+                    current_obj_by_key = None if newly_created_obj.unique_key() not in key_to_current_obj else key_to_current_obj[newly_created_obj.unique_key()]
+                    create_or_update(newly_created_obj, current_obj_by_id, current_obj_by_key, values_to_check, new_session, output_creator)
+                    
+                    if current_obj_by_id is not None and current_obj_by_id in untouched_obj_ids:
+                        untouched_obj_ids.remove(current_obj_by_id.id)
+                    if current_obj_by_key is not None and current_obj_by_key in untouched_obj_ids:
+                        untouched_obj_ids.remove(current_obj_by_key.id)
+                        
+        #Delete untouched objs
+        for untouched_obj_id  in untouched_obj_ids:
+            new_session.delete(id_to_current_obj[untouched_obj_id])
+            output_creator.removed()
+        
+        #Commit
+        output_creator.finished()
+        new_session.commit()
+        
+    except Exception:
+        log.exception('Unexpected error:' + str(sys.exc_info()[0]))
+    finally:
+        new_session.close()
+        old_session.close()
+        
+    log.info('complete')
 
 """
 ---------------------Convert------------------------------
 """   
 
-def convert(old_session_maker, new_session_maker, ask=True):
-    from model_old_schema.feature import Feature as OldFeature, AliasFeature as OldAliasFeature
-    from model_old_schema.general import FeatUrl as OldFeatUrl, DbxrefFeat as OldDbxrefFeat
+def convert(old_session_maker, new_session_maker):  
+    logging.basicConfig(format='%(asctime)s %(name)s: %(message)s', level=logging.DEBUG, datefmt='%m/%d/%Y %H:%M:%S')
     
-    # Convert Locus
-    write_to_output_file('Locus')
-    execute_conversion(convert_locuses, old_session_maker, new_session_maker, ask,
-                       old_bioentity=lambda old_session: old_session.query(OldFeature).options(
-                                                        joinedload('annotation')).all())
-
-    # Convert other bioentities
-    write_to_output_file('Other Bioentity')
-    execute_conversion(convert_other_bioentities, old_session_maker, new_session_maker, ask,
-                       old_bioentity=lambda old_session: old_session.query(OldFeature).all())
+    log = logging.getLogger('convert.bioentity')
+    
+    hdlr = logging.FileHandler('/Users/kpaskov/Documents/Schema Conversion Logs/convert.bioentity.' + str(datetime.now()) + '.txt')
+    formatter = logging.Formatter('%(asctime)s %(name)s: %(message)s', '%m/%d/%Y %H:%M:%S')
+    hdlr.setFormatter(formatter)
+    log.addHandler(hdlr) 
+    log.setLevel(logging.DEBUG)
+    
+    log.info('begin')
         
-    # Convert aliases
-    write_to_output_file('Alias')
-    execute_conversion(convert_aliases, old_session_maker, new_session_maker, ask,
-                       old_aliases=lambda old_session: old_session.query(OldAliasFeature).options(
-                                                        joinedload('alias')).all(),
-                       old_altids=lambda old_session: old_session.query(OldDbxrefFeat).options(
-                                                        joinedload('dbxref')).all())
-        
-    # Convert urls
-    write_to_output_file('Url')
-    intervals = [0, 1000, 2000, 3000, 4000, 5000, 7000, 50000]
-    for i in range(0, len(intervals)-1):
-        min_id = intervals[i]
-        max_id = intervals[i+1]
-        write_to_output_file('Feature ids between ' + str(min_id) + ' and ' + str(max_id))
-        execute_conversion(convert_urls, old_session_maker, new_session_maker, ask, 
-                        min_id = lambda old_session : min_id,
-                        max_id = lambda old_session : max_id,
-                        old_urls = lambda old_session: old_session.query(OldFeatUrl).filter(
-                                                        OldFeatUrl.feature_id >= min_id).filter(
-                                                        OldFeatUrl.feature_id < max_id).options(
-                                                        joinedload('url'), 
-                                                        joinedload('feature'), 
-                                                        joinedload('url.displays')).all(),
-                        old_altids=lambda old_session: old_session.query(OldDbxrefFeat).filter(
-                                                        OldDbxrefFeat.feature_id >= min_id).filter(
-                                                        OldDbxrefFeat.feature_id < max_id).options(
-                                                        joinedload('dbxref'), 
-                                                        joinedload('dbxref.dbxref_urls'),
-                                                        joinedload('dbxref.dbxref_urls.url'),
-                                                        joinedload('dbxref.dbxref_urls.url.displays')).all())
-
-def convert_locuses(new_session, old_bioentity=None):
+    convert_locus(old_session_maker, new_session_maker)
     
-    from model_new_schema.bioentity import Locus as NewLocus
+    convert_general_bioentity(old_session_maker, new_session_maker)
     
-    #Cache bioentities
-    key_to_bioentity = cache_by_key(NewLocus, new_session)
+    convert_alias(old_session_maker, new_session_maker)
     
-    #Create new genes if they don't exist, or update the database if they do. 
-    new_bioentities = [create_locus(x) for x in old_bioentity]
+    convert_url(old_session_maker, new_session_maker, 1000)
     
-    values_to_check = ['display_name', 'link', 'source', 'status', 'date_created', 'created_by',
-                       'qualifier', 'attribute', 'name_description', 'headline', 'description', 
-                       'genetic_position', 'locus_type']
-    success = create_or_update_and_remove(new_bioentities, key_to_bioentity, values_to_check, new_session)
-    return success
-        
-def convert_other_bioentities(new_session, old_bioentity=None):
+    convert_qualifier_evidence(old_session_maker, new_session_maker)
     
-    from model_new_schema.bioentity import Bioentity as NewBioentity
+    log.info('complete')
     
-    #Cache bioentities
-    key_to_bioentity = cache_by_key(NewBioentity, new_session, class_type='BIOENTITY')
-    
-    #Create new bioentities if they don't exist, or update the database if they do. 
-    new_bioentities = [create_bioentity(x) for x in old_bioentity]
-    
-    values_to_check = ['display_name', 'link', 'source', 'status', 'date_created', 'created_by']
-    success = create_or_update_and_remove(new_bioentities, key_to_bioentity, values_to_check, new_session)
-    return success
-
-def convert_aliases(new_session, old_aliases, old_altids=None):
-    
-    from model_new_schema.bioentity import Bioentity as NewBioentity, Bioentityalias as NewBioentityalias
-    
-    #Cache aliases
-    key_to_alias = cache_by_key(NewBioentityalias, new_session)
-    id_to_bioentity = cache_by_id(NewBioentity, new_session)
-    
-    #Create new aliases if they don't exist, or update the database if they do. 
-    new_aliases = [create_alias(x, id_to_bioentity) for x in old_aliases]
-    new_aliases.extend([create_dbxref_alias(x, id_to_bioentity) for x in old_altids])
-    
-    values_to_check = ['source', 'category', 'created_by', 'date_created']
-    success = create_or_update_and_remove(new_aliases, key_to_alias, values_to_check, new_session)
-    return success
-
-def convert_urls(new_session, old_urls=None, old_altids=None, min_id=None, max_id=None):
-    
-    from model_new_schema.bioentity import Bioentity as NewBioentity, Bioentityurl as NewBioentityurl
-    
-    #Cache urls
-    key_to_url = cache_by_key_in_range(NewBioentityurl, NewBioentityurl.bioentity_id, new_session, min_id, max_id)
-    id_to_bioentity = cache_by_id(NewBioentity, new_session)
-    
-    #Create new urls if they don't exist, or update the database if they do. 
-    new_urls = [create_url(x, id_to_bioentity) for x in old_urls]
-    for x in old_altids:
-        new_urls.extend(create_dbxref_url(x, id_to_bioentity))
-    
-    values_to_check = ['display_name', 'source', 'created_by', 'date_created']
-    success = create_or_update_and_remove(new_urls, key_to_url, values_to_check, new_session)
-    return success
-
 if __name__ == "__main__":
     old_session_maker = prepare_schema_connection(model_old_schema, old_config)
     new_session_maker = prepare_schema_connection(model_new_schema, new_config)
-    convert(old_session_maker, new_session_maker, False)   
+    convert(old_session_maker, new_session_maker)   
    
 

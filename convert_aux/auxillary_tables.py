@@ -30,139 +30,116 @@ def update_biocon_gene_counts(new_session, biocon_cls, evidence_cls):
     print 'In total ' + str(num_changed) + ' changed.'
     return True
 
-def create_reference_bibs(new_session, min_id, max_id):
-    from model_new_schema.reference import Reference, Bibentry
-    
-    key_to_refbib = cache_by_key_in_range(Bibentry, Bibentry.id, new_session, min_id, max_id)
-    references = cache_by_id_in_range(Reference, Reference.id, new_session, min_id, max_id).values()
-    
-    new_refbibs = [create_ref_bib(reference) for reference in references]
-    
-    values_to_check = ['text']
-    success = create_or_update_and_remove(new_refbibs, key_to_refbib, values_to_check, new_session)
-    return success   
-
-def create_ref_bib(reference):
-    from model_new_schema.reference import Bibentry
-    entries = []
-    entries.append('PMID- ' + str(reference.pubmed_id)) 
-    entries.append('STAT- ' + str(reference.status))
-    entries.append('DP  - ' + str(reference.date_published)) 
-    entries.append('TI  - ' + str(reference.title))
-    entries.append('SO  - ' + str(reference.source)) 
-    entries.append('LR  - ' + str(reference.date_revised)) 
-    entries.append('IP  - ' + str(reference.issue)) 
-    entries.append('PG  - ' + str(reference.page)) 
-    entries.append('VI  - ' + str(reference.volume)) 
-        
-    for author in reference.author_names:
-        entries.append('AU  - ' + author)
-    for reftype in reference.reftype_names:
-        entries.append('PT  - ' + reftype)
-        
-    if reference.abstract_obj is not None:
-        entries.append('AB  - ' + reference.abstract)
-        
-    if reference.journal is not None:
-        entries.append('TA  - ' + str(reference.journal.abbreviation)) 
-        entries.append('JT  - ' + str(reference.journal.full_name)) 
-        entries.append('IS  - ' + str(reference.journal.issn)) 
-
-        
-    if reference.book is not None:
-        entries.append('PL  - ' + str(reference.book.publisher_location)) 
-        entries.append('BTI - ' + str(reference.book.title))
-        entries.append('VTI - ' + str(reference.book.volume_title)) 
-        entries.append('ISBN- ' + str(reference.book.isbn))     
-    ref_bib = Bibentry(reference.id, '\n'.join(entries))
-    return ref_bib
-    
-    
-
 def create_interaction_format_name(bioent1, bioent2):
     if bioent1.id < bioent2.id:
         return bioent1.format_name + '__' + bioent2.format_name
     else:
         return bioent2.format_name + '__' + bioent1.format_name
-
-def convert_interactions(new_session, interaction_type, evidence_cls):
-    #Cache interactions
-    from model_new_schema.auxiliary import Interaction as NewInteraction
-    from model_new_schema.bioentity import Bioentity as NewBioentity
-    key_to_interactions = cache_by_key(NewInteraction, new_session, interaction_type=interaction_type)
-    #key_to_all_interactions = cache_by_id(NewInteraction, new_session)
-    key_to_evidence = cache_by_key(evidence_cls, new_session)
-    id_to_bioent = cache_by_id(NewBioentity, new_session)
     
-    new_interactions = []
+def create_interaction_id(evidence_id):
+    return evidence_id
+
+def create_interaction_family_id(interaction_id):
+    return interaction_id
+
+def create_interaction(evidence, format_name_to_info, id_to_bioent):
+    from model_new_schema.auxiliary import Interaction
+    bioent1_id = evidence.bioentity1_id
+    bioent2_id = evidence.bioentity2_id
+    bioent1 = id_to_bioent[bioent1_id]
+    bioent2 = id_to_bioent[bioent2_id]
+    format_name = create_interaction_format_name(bioent1, bioent2)
+    evidence_count, min_id = format_name_to_info[format_name]
+    if min_id == create_interaction_id(evidence.id):
+        interaction = Interaction(create_interaction_id(evidence.id), evidence.class_type, format_name, format_name, bioent1_id, bioent2_id)
+        interaction.evidence_count = evidence_count
+        return [interaction]
+    return None
+
+def create_interaction_precomp(evidences, id_to_bioent):
     format_name_to_evidence_count = {}
-    for evidence in key_to_evidence.values():
-        bioent1_id = evidence.bioent1_id
-        bioent2_id = evidence.bioent2_id
+    for evidence in evidences:
+        bioent1_id = evidence.bioentity1_id
+        bioent2_id = evidence.bioentity2_id
         bioent1 = id_to_bioent[bioent1_id]
         bioent2 = id_to_bioent[bioent2_id]
         format_name = create_interaction_format_name(bioent1, bioent2)
         if format_name in format_name_to_evidence_count:
-            format_name_to_evidence_count[format_name] = format_name_to_evidence_count[format_name] + 1
+            evidence_count, min_id = format_name_to_evidence_count[format_name]
+            format_name_to_evidence_count[format_name] = (evidence_count + 1, min(min_id, create_interaction_id(evidence.id)))
         else:
-            format_name_to_evidence_count[format_name] = 1
-        interaction = NewInteraction(evidence.id, interaction_type, format_name, format_name, bioent1_id, bioent2_id)
-        new_interactions.append(interaction)
-        
-    for interaction in new_interactions:
-        interaction.evidence_count = format_name_to_evidence_count[interaction.format_name]
-        
-    values_to_check = ['display_name', 'bioent1_id', 'bioent2_id', 'evidence_count']
-    success = create_or_update_and_remove(new_interactions, key_to_interactions, values_to_check, new_session)
-    return success          
-            
-def convert_interaction_families(new_session, interaction_types, max_neighbors, min_id, max_id):
-    from model_new_schema.auxiliary import Interaction as NewInteraction, InteractionFamily as NewInteractionFamily
-    from model_new_schema.bioentity import Bioentity as NewBioentity
+            format_name_to_evidence_count[format_name] = (1, create_interaction_id(evidence.id))
+    return format_name_to_evidence_count
+
+def create_interaction_family(interaction, precomp_info, max_neighbors, id_to_bioent):
+    from model_new_schema.auxiliary import InteractionFamily as NewInteractionFamily
+
+    bioent_id_to_evidence_cutoff, bioent_id_to_neighbor_ids, edge_to_counts = precomp_info
     
-    id_to_bioent = cache_by_id(NewBioentity, new_session)
-    range_bioent_ids = cache_ids_in_range(NewBioentity, NewBioentity.id, new_session, min_id, max_id)
-    key_to_interfams = cache_by_key_in_range(NewInteractionFamily, NewInteractionFamily.bioentity_id, new_session, min_id, max_id)
+    interaction_type = interaction.class_type
+    bioent1_id, bioent2_id = order_bioent_ids(interaction.bioentity1_id, interaction.bioentity2_id)
+    key = (bioent1_id, bioent2_id)
+    edge_counts = edge_to_counts[key]
+    phys_count = 0 if 'PHYSINTERACTION' not in edge_counts else edge_counts['PHYSINTERACTION']
+    gen_count = 0 if 'GENINTERACTION' not in edge_counts else edge_counts['GENINTERACTION']
+    total_count = sum(edge_counts.values())
+    is_first_interaction_type = sorted(edge_to_counts[key].keys())[0] == interaction_type
     
+    if not is_first_interaction_type:
+        return None
     
+    interaction_families = []
+    
+    #Check endpoint1
+    if bioent_id_to_evidence_cutoff[bioent1_id] <= total_count:    
+        interaction_families.append(NewInteractionFamily(create_interaction_family_id(interaction.id), bioent1_id, bioent1_id, bioent2_id, gen_count, phys_count, total_count))
+    
+    #Check endpoint2
+    if bioent_id_to_evidence_cutoff[bioent2_id] <= total_count:    
+        interaction_families.append(NewInteractionFamily(create_interaction_family_id(interaction.id), bioent2_id, bioent1_id, bioent2_id, gen_count, phys_count, total_count))
+    
+    #Check overlap
+    bioent1_neighbors = bioent_id_to_neighbor_ids[bioent1_id]
+    bioent2_neighbors = bioent_id_to_neighbor_ids[bioent2_id]
+    overlap = bioent1_neighbors & bioent2_neighbors
+    for bioent_id in overlap:
+        if bioent_id_to_evidence_cutoff[bioent_id] <= total_count: 
+            interaction_families.append(NewInteractionFamily(create_interaction_family_id(interaction.id), bioent_id, bioent1_id, bioent2_id, gen_count, phys_count, total_count))
+    return interaction_families
+    
+
+def create_interaction_family_precomp(interactions, max_neighbors, id_to_bioent):
     bioent_id_to_neighbor_ids = {}
     edge_to_counts = {}
-    
-    all_interactions = dict()
-    for interaction_type in interaction_types:
-        all_interactions[interaction_type] = cache_by_id(NewInteraction, new_session, interaction_type=interaction_type)
     
     # Build a set of neighbors for every bioent.
     for bioent_id in id_to_bioent.keys():
         bioent_id_to_neighbor_ids[bioent_id] = set()
         
-    for interaction_type in interaction_types:
-        id_to_interaction = all_interactions[interaction_type]
-        for interaction in id_to_interaction.values():
-            bioent1_id = interaction.bioent1_id
-            bioent2_id = interaction.bioent2_id
-            if bioent2_id not in bioent_id_to_neighbor_ids[bioent1_id]:
-                bioent_id_to_neighbor_ids[bioent1_id].add(bioent2_id)
-            if bioent1_id not in bioent_id_to_neighbor_ids[bioent2_id]:
-                bioent_id_to_neighbor_ids[bioent2_id].add(bioent1_id)
+    for interaction in interactions:
+        bioent1_id = interaction.bioentity1_id
+        bioent2_id = interaction.bioentity2_id
+        if bioent2_id not in bioent_id_to_neighbor_ids[bioent1_id]:
+            bioent_id_to_neighbor_ids[bioent1_id].add(bioent2_id)
+        if bioent1_id not in bioent_id_to_neighbor_ids[bioent2_id]:
+            bioent_id_to_neighbor_ids[bioent2_id].add(bioent1_id)
                 
-    # Build a set of maximum counts (for each interaction_type and total) for each edge
-    for interaction_type in interaction_types:
-        id_to_interaction = all_interactions[interaction_type]
-        for interaction in id_to_interaction.values():
-            bioent1_id, bioent2_id = order_bioent_ids(interaction.bioent1_id, interaction.bioent2_id)
-            key = (bioent1_id, bioent2_id)
+    # Build a set of maximum counts for each interaction_type for each edge
+    for interaction in interactions:
+        interaction_type = interaction.class_type
+        bioent1_id, bioent2_id = order_bioent_ids(interaction.bioentity1_id, interaction.bioentity2_id)
+        key = (bioent1_id, bioent2_id)
             
-            if key not in edge_to_counts:
-                edge_to_counts[key]  = {interaction_type: interaction.evidence_count}
-            elif interaction_type in edge_to_counts[key]:
-                edge_to_counts[key][interaction_type] = edge_to_counts[key][interaction_type] + interaction.evidence_count
-            else:
-                edge_to_counts[key][interaction_type] = interaction.evidence_count
-                
-    interfams = []
-                
-    for bioent_id in range_bioent_ids:
+        if key not in edge_to_counts:
+            edge_to_counts[key]  = {interaction_type: interaction.evidence_count}
+        elif interaction_type in edge_to_counts[key]:
+            edge_to_counts[key][interaction_type] = edge_to_counts[key][interaction_type] + interaction.evidence_count
+        else:
+            edge_to_counts[key][interaction_type] = interaction.evidence_count
+                      
+    bioent_id_to_evidence_cutoff = {}
+          
+    for bioent_id in id_to_bioent.keys():
         neighbor_ids = bioent_id_to_neighbor_ids[bioent_id]
         
         # Calculate evidence cutoffs.
@@ -179,40 +156,10 @@ def convert_interaction_families(new_session, interaction_types, max_neighbors, 
         else:
             min_evidence_count = 1 
             
-        # Build a "Star Graph" with the bioent in the center and all neighbors with evidence above the cutoff connected to this
-        # center node.
-        cutoff_neighbor_ids = [neighbor_id for neighbor_id in neighbor_ids if sum(edge_to_counts[order_bioent_ids(bioent_id, neighbor_id)].values()) >= min_evidence_count]
-        for neighbor_id in cutoff_neighbor_ids:
-            bioent1_id, bioent2_id = order_bioent_ids(bioent_id, neighbor_id)
-            bioent1 = id_to_bioent[bioent1_id]
-            bioent2 = id_to_bioent[bioent2_id]
-            neigh_ev_counts = edge_to_counts[order_bioent_ids(bioent_id, neighbor_id)]
-            interfams.append(create_interaction_family(bioent_id, bioent1, bioent2, neigh_ev_counts))
-                
-        # Now add edges connecting nodes in the star.
-        for neighbor_id in cutoff_neighbor_ids:
-            for neigh_of_neigh_id in bioent_id_to_neighbor_ids[neighbor_id]:
-                neigh_of_neigh_ev_counts = edge_to_counts[order_bioent_ids(neighbor_id, neigh_of_neigh_id)]
-                neigh_of_neigh_ev_count = sum(neigh_of_neigh_ev_counts.values())
-                if neigh_of_neigh_ev_count >= min_evidence_count and neigh_of_neigh_id in cutoff_neighbor_ids:
-                    bioent1_id, bioent2_id = order_bioent_ids(neighbor_id, neigh_of_neigh_id)
-                    bioent1 = id_to_bioent[bioent1_id]
-                    bioent2 = id_to_bioent[bioent2_id]
-                    interfams.append(create_interaction_family(bioent_id, bioent1, bioent2, neigh_of_neigh_ev_counts))
+        bioent_id_to_evidence_cutoff[bioent_id] = min_evidence_count
         
-    values_to_check = ['genetic_ev_count', 'physical_ev_count', 'evidence_count']
-    success = create_or_update_and_remove(interfams, key_to_interfams, values_to_check, new_session)
-    return success 
-
-def create_interaction_family(bioent_id, bioent1, bioent2, evidence_counts):
-    from model_new_schema.auxiliary import InteractionFamily as NewInteractionFamily
-    
-    phys_count = 0 if 'PHYSICAL_INTERACTION' not in evidence_counts else evidence_counts['PHYSICAL_INTERACTION']
-    gen_count = 0 if 'GENETIC_INTERACTION' not in evidence_counts else evidence_counts['GENETIC_INTERACTION']
-    total_count = sum(evidence_counts.values())
-                
-    return NewInteractionFamily(bioent_id, bioent1.id, bioent2.id, gen_count, phys_count, total_count)
-
+    return (bioent_id_to_evidence_cutoff, bioent_id_to_neighbor_ids, edge_to_counts)
+        
 
 def order_bioent_ids(bioent1_id, bioent2_id):
     if bioent1_id < bioent2_id:
@@ -287,25 +234,18 @@ def convert_biocon_ancestors(new_session, bioconrel_type, num_generations):
             new_biocon_ancestors.extend([NewBioconceptAncestor(ancestor_id, child_id, bioconrel_type, generation) for ancestor_id in this_generation])
         create_or_update_and_remove(new_biocon_ancestors, key_to_biocon_ancestors, [], new_session) 
     return True
-        
-def convert_bioent_references(new_session, evidences, bioent_ref_type, bioent_f, min_id, max_id):
-    
+
+def create_bioent_reference_id(evidence_id):
+    return evidence_id
+
+def create_bioent_reference(evidence, bioent_f):
     from model_new_schema.auxiliary import BioentityReference as NewBioentityReference
-    
-    key_to_bioent_reference = cache_by_key_in_range(NewBioentityReference, NewBioentityReference.bioentity_id, new_session, min_id, max_id, bioent_ref_type=bioent_ref_type)
-    
-    new_bioent_refs = {}
-    for evidence in evidences:
-        reference_id = evidence.reference_id
-        bioent_ids = bioent_f(evidence)
-        for bioent_id in bioent_ids:
-            if reference_id is not None and bioent_id is not None and (bioent_id, reference_id) not in new_bioent_refs and bioent_id > min_id and bioent_id <= max_id:
-                new_bioent_ref = NewBioentityReference(bioent_ref_type, bioent_id, reference_id)
-                new_bioent_refs[(bioent_id, reference_id)] = new_bioent_ref
-            
-    values_to_check = []
-    success = create_or_update_and_remove(new_bioent_refs.values(), key_to_bioent_reference, values_to_check, new_session)
-    return success 
+    reference_id = evidence.reference_id
+    bioent_ids = bioent_f(evidence)
+    for bioent_id in bioent_ids:
+        if reference_id is not None and bioent_id is not None and (bioent_id, reference_id):
+            return NewBioentityReference(evidence.class_type, bioent_id, reference_id)
+    return None
     
     
     

@@ -42,6 +42,10 @@ def cache_by_key(cls, session, **kwargs):
     cache_entries = dict([(x.unique_key(), x) for x in session.query(cls).filter_by(**kwargs).all()])
     return cache_entries
 
+def cache_by_key_limit(cls, session, limit, **kwargs):
+    cache_entries = dict([(x.unique_key(), x) for x in session.query(cls).filter_by(**kwargs).limit(limit)])
+    return cache_entries
+
 def cache_link_by_key(cls, session, **kwargs):
     cache_entries = dict([(x.unique_key(), (x.id, x.name_with_link)) for x in session.query(cls).filter_by(**kwargs).all()])
     return cache_entries
@@ -79,14 +83,19 @@ def cache_references_by_pubmed(session, **kwargs):
     cache_entries = dict([(x.pubmed_id, x) for x in session.query(Reference).filter_by(**kwargs).all()])
     return cache_entries
     
-def add_or_check(new_obj, mapping, key, values_to_check, session, output_creator):
-    if key in mapping:
-        current_obj = mapping[key]
+def add_or_check(new_obj, key_mapping, id_mapping, key, values_to_check, session, output_creator):
+    if key in key_mapping:
+        current_obj = key_mapping[key]
         check_values(new_obj, current_obj, values_to_check, output_creator, key)
         return False
     else:
+        if new_obj.id in id_mapping:
+            to_be_removed = id_mapping[new_obj.id]
+            session.delete(to_be_removed)
+        
         session.add(new_obj)
-        mapping[key] = new_obj
+        key_mapping[key] = new_obj
+        id_mapping[new_obj.id] = new_obj
         output_creator.added()
         return True
     
@@ -112,11 +121,6 @@ def create_or_update(new_objs, mapping, values_to_check, session):
         return True
     
 def create_or_update_and_remove(new_objs, mapping, values_to_check, session, full_mapping=None):
-#    if len(new_objs) > 150000:
-#        print 'Too many objects!'
-#        print len(new_objs)
-#        raise Exception();
-    
     if full_mapping is None:
         full_mapping = mapping
     
@@ -179,26 +183,133 @@ def float_approx_equal(x, y, tol=1e-18, rel=1e-7):
     assert tests
     return abs(x - y) <= max(tests)
 
-def execute_conversion(convert_f, old_session_maker, new_session_maker, ask, **kwargs):
+def execute_conversion(new_obj_cls, old_obj_cls, create_f, get_old_obj_query, create_id_f, 
+                       values_to_check, old_session_maker, new_session_maker, limit, ask, **kwargs):
     start_time = datetime.datetime.now()
     try:
         old_session = old_session_maker()
-        kwargs = dict([(x, y(old_session)) for x, y in kwargs.iteritems()])
-        success = False
-        while not success:
-            new_session = new_session_maker()
-            success = convert_f(new_session, **kwargs)
-            if ask:
-                ask_to_commit(new_session, start_time)  
+        
+        new_session = new_session_maker()
+        kwargs = dict([(x, y(new_session)) for x, y in kwargs.iteritems()])
+        new_session.close()
+        
+        old_obj_count = get_old_obj_query(old_session).count()
+        
+        if create_id_f is None:
+            key_to_obj = cache_by_key(new_obj_cls, new_session)
+        
+        end_time = datetime.datetime.now()
+        print 'Prep ' + str(end_time - start_time) + '\n'
+        
+        start_time = end_time
+        
+        iterations = 0
+        min_id = 0
+        old_objs = get_old_obj_query(old_session).filter(old_obj_cls.id >= min_id).order_by(old_obj_cls.id).limit(limit).all()
+        
+        while(len(old_objs) > 0):
+            max_id = max([x.id for x in old_objs]) + 1
+            print "{0:.2f}%".format(100.0 * (iterations + 1) * limit / old_obj_count)
+            if create_id_f is not None:
+                print str(min_id) + ' (' + str(create_id_f(min_id)) + ') to ' + str(max_id) + ' (' + str(create_id_f(max_id)) + ')'
             else:
-                commit_without_asking(new_session, start_time)
-            new_session.close()
+                print str(min_id) + ' to ' + str(max_id)
+     
+            success = False
+            while not success:
+                new_session = new_session_maker()
+                
+                if create_id_f is not None:
+                    key_to_obj = cache_by_key_in_range(new_obj_cls, new_obj_cls.id, new_session, create_id_f(min_id), create_id_f(max_id))
+            
+                new_objs = []
+                for old_obj in old_objs:
+                    newly_created_objs = create_f(old_obj, **kwargs)
+                    if newly_created_objs is not None:
+                        new_objs.extend(newly_created_objs)
+            
+                if create_id_f is None:
+                    success = create_or_update(new_objs, key_to_obj, values_to_check, new_session)
+                else:
+                    success = create_or_update_and_remove(new_objs, key_to_obj, values_to_check, new_session)
+            
+                if ask:
+                    ask_to_commit(new_session, start_time)  
+                else:
+                    commit_without_asking(new_session, start_time)
+                new_session.close()
+              
+            start_time = datetime.datetime.now()  
+            iterations = iterations + 1
+            min_id = max_id
+            old_objs = get_old_obj_query(old_session).filter(old_obj_cls.id >= min_id).order_by(old_obj_cls.id).limit(limit).all()
+            
     except Exception:
         write_to_output_file( "Unexpected error:" + str(sys.exc_info()[0]) )
         raise
     finally:
         old_session.close()
         new_session.close()  
+        
+def execute_aux(new_obj_cls, old_obj_cls, precomp_f, create_f, create_id_f, 
+                       values_to_check, new_session_maker, limit, ask, **kwargs):
+    start_time = datetime.datetime.now()
+    try:        
+        new_session = new_session_maker()
+        kwargs = dict([(x, y(new_session)) for x, y in kwargs.iteritems()])
+        
+        get_old_obj_query = lambda new_session: new_session.query(old_obj_cls)
+        old_obj_count = get_old_obj_query(new_session).count()
+        
+        precomp = None
+        if precomp_f is not None:
+            old_objs = get_old_obj_query(new_session).all()
+            precomp = precomp_f(old_objs, **kwargs)
+        new_session.close()
+        
+        end_time = datetime.datetime.now()
+        print 'Prep ' + str(end_time - start_time) + '\n'
+        
+        start_time = end_time
+        
+        iterations = 0
+        min_id = 0
+        old_objs = get_old_obj_query(new_session).filter(old_obj_cls.id >= min_id).order_by(old_obj_cls.id).limit(limit).all()
+        while(len(old_objs) > 0):
+            max_id = max([x.id for x in old_objs]) + 1
+            print "{0:.2f}%".format(100.0 * (iterations + 1) * limit / old_obj_count)
+            print str(min_id) + ' (' + str(create_id_f(min_id)) + ') to ' + str(max_id) + ' (' + str(create_id_f(max_id)) + ')'
+            
+            success = False
+            while not success:
+                new_session = new_session_maker()
+                
+                key_to_obj = cache_by_key_in_range(new_obj_cls, new_obj_cls.id, new_session, create_id_f(min_id), create_id_f(max_id))
+            
+                new_objs = []
+                for old_obj in old_objs:
+                    newly_created_objs = create_f(old_obj, precomp, **kwargs)
+                    if newly_created_objs is not None:
+                        new_objs.extend(newly_created_objs)
+            
+                success = create_or_update_and_remove(new_objs, key_to_obj, values_to_check, new_session)
+            
+                if ask:
+                    ask_to_commit(new_session, start_time)  
+                else:
+                    commit_without_asking(new_session, start_time)
+                new_session.close()
+              
+            start_time = datetime.datetime.now()  
+            iterations = iterations + 1
+            min_id = max_id
+            old_objs = get_old_obj_query(new_session).filter(old_obj_cls.id >= min_id).order_by(old_obj_cls.id).limit(limit).all()
+            
+    except Exception:
+        write_to_output_file( "Unexpected error:" + str(sys.exc_info()[0]) )
+        raise
+    finally:
+        new_session.close() 
         
 def execute_conversion_file(convert_f, new_session_maker, ask, **kwargs):  
     start_time = datetime.datetime.now()
@@ -221,11 +332,59 @@ def execute_conversion_file(convert_f, new_session_maker, ask, **kwargs):
 def break_up_file(filename):
     rows = []
     f = open(filename, 'r')
-    i = 0
     for line in f:
-        rows.append((line.split('\t'), i))
-        i = i+1
+        rows.append(line.split('\t'))
     f.close()
     return rows
-    
+
+def execute_obj_conversion(new_session_maker, old_session_maker, limit, ask, 
+                           grab_current_objs, grab_old_objs, convert_old_to_new, values_to_check):
+    start_time = datetime.datetime.now()
+    try:
+        output_creator = OutputCreator()
+        
+        #Prepare bank of current objs
+        new_session = new_session_maker()
+        current_objs = grab_current_objs(new_session)
+        new_session.close()
+        
+        key_to_current_obj = dict([(x.unique_key(), x) for x in current_objs])
+        id_to_current_obj = dict([(x.id, x) for x in current_objs])
+        marked_current_obj_ids = set()
+        
+        min_id = 0
+        old_objs = None
+        while old_objs is None or len(old_objs) > 0:
+            #Grab old objects in batches
+            old_session = old_session_maker()
+            old_objs = grab_old_objs(old_session, min_id, limit)
+            old_session.close()
+            
+            #Convert old objects to new and add or edit entries in db.
+            new_session = new_session_maker()
+            for old_obj in old_objs:
+                new_obj = convert_old_to_new(old_obj)
+                if new_obj is not None:
+                    add_or_check(new_obj, key_to_current_obj, id_to_current_obj, new_obj.unique_key(), values_to_check, new_session, output_creator)
+                    marked_current_obj_ids.add(new_obj.id)
+                    
+            #Remove unmarked objects
+            
+            
+            #Finish and commit.
+            if ask:
+                ask_to_commit(new_session, start_time)  
+            else:
+                commit_without_asking(new_session, start_time)
+            output_creator.finished()
+            new_session.close()
+            
+            min_id = max([x.id for x in old_objs]) + 1
+        
+    except Exception:
+        write_to_output_file( "Unexpected error:" + str(sys.exc_info()[0]) )
+        raise
+    finally:
+        new_session.close()  
+
         
