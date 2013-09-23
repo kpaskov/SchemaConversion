@@ -7,7 +7,7 @@ from convert_core import create_or_update
 from datetime import datetime
 from mpmath import ceil
 from schema_conversion import prepare_schema_connection, new_config, old_config, \
-    break_up_file
+    break_up_file, create_format_name
 from schema_conversion.output_manager import OutputCreator
 import logging
 import model_new_schema
@@ -32,9 +32,10 @@ def create_protein(old_protein, id_to_bioentity):
     locus = id_to_bioentity[locus_id]
     
     display_name = locus.display_name + 'p'
-    format_name = locus.format_name = 'P'
+    format_name = locus.format_name + 'P'
+    link = locus.link.replace('/locus.f', '/protein/proteinPage.')
     protein = Protein(create_protein_id(locus_id), display_name, format_name, locus_id, old_protein.length, 
-                      old_protein.n_term_seq, old_protein.c_term_seq, None, old_protein.date_created, old_protein.created_by)
+                      old_protein.n_term_seq, old_protein.c_term_seq, link, old_protein.date_created, old_protein.created_by)
     return [protein]
 
 def convert_protein(old_session_maker, new_session_maker):
@@ -54,7 +55,7 @@ def convert_protein(old_session_maker, new_session_maker):
         key_to_current_obj = dict([(x.unique_key(), x) for x in current_objs])
                 
         #Values to check
-        values_to_check = ['display_name', 'link', 'source', 'status', 'date_created', 'created_by',
+        values_to_check = ['display_name', 'link', 'source', 'status', 'date_created', 'created_by', 'link',
                        'locus_id', 'length', 'n_term_seq', 'c_term_seq']
         
         untouched_obj_ids = set(id_to_current_obj.keys())
@@ -106,63 +107,68 @@ def convert_protein(old_session_maker, new_session_maker):
 def create_domain(row):
     from model_new_schema.protein import Domain
     
-    source = row[3]
-    db_identifier = row[4]
-    description = row[5]
-    interpro_id = row[11]
-    interpro_description = row[12]
+    source = row[13].strip()
+    format_name = create_format_name(row[3].strip())
+    display_name = row[3].strip()
+    description = row[4].strip()
+    interpro_id = row[5].strip()
+    interpro_description = row[6].strip()
     
     #Need to check these links
     if source == 'JASPAR':
-        link = 'http://jaspar.genereg.net/cgi-bin/jaspar_db.pl?rm=present&collection=CORE&ID=' + db_identifier
+        link = 'http://jaspar.genereg.net/cgi-bin/jaspar_db.pl?rm=present&collection=CORE&ID=' + display_name
     elif source == 'HMMSmart':
         source = 'SMART'
-        link = 'http://smart.embl-heidelberg.de/smart/do_annotation.pl?DOMAIN=' + db_identifier
+        link = 'http://smart.embl-heidelberg.de/smart/do_annotation.pl?DOMAIN=' + display_name
     elif source == 'HMMPfam':
-        source = 'HMMPfam'
-        link = 'http://pfam.sanger.ac.uk/family/' + db_identifier + '?type=Family'
+        link = 'http://pfam.sanger.ac.uk/family/' + display_name + '?type=Family'
     elif source == 'Gene3D':
-        link = 'http://www.cathdb.info/version/latest/superfamily/' + db_identifier[6:]
+        link = 'http://www.cathdb.info/version/latest/superfamily/' + display_name[6:]
     elif source == 'superfamily':
-        source = 'SUPERFAMILY'
-        link = 'http://supfam.org/SUPERFAMILY/cgi-bin/scop.cgi?ipid=' + db_identifier
+        link = 'http://supfam.org/SUPERFAMILY/cgi-bin/scop.cgi?ipid=' + display_name
     elif source == 'Seg':
-        return None
+        link = None
     elif source == 'Coil':
-        return None
+        link = None
     elif source == 'HMMPanther':
         source = 'Panther'
-        link = 'http://www.pantherdb.org/panther/family.do?clsAccession=' + db_identifier
+        link = 'http://www.pantherdb.org/panther/family.do?clsAccession=' + display_name
     elif source == 'HMMTigr':
-        link = 'http://www.jcvi.org/cgi-bin/tigrfams/HmmReportPage.cgi?acc=' + db_identifier
+        link = 'http://www.jcvi.org/cgi-bin/tigrfams/HmmReportPage.cgi?acc=' + display_name
     elif source == 'FPrintScan':
         source = 'PRINTS'
-        link = 'http://www.bioinf.man.ac.uk/cgi-bin/dbbrowser/sprint/searchprintss.cgi?display_opts=Prints&category=None&queryform=false&prints_accn=' + db_identifier
+        link = 'http://www.bioinf.man.ac.uk/cgi-bin/dbbrowser/sprint/searchprintss.cgi?display_opts=Prints&category=None&queryform=false&prints_accn=' + display_name
     elif source == 'BlastProDom':
-        link = 'http://prodom.prabi.fr/prodom/current/cgi-bin/request.pl?question=DBEN&query=' + db_identifier
+        link = 'http://prodom.prabi.fr/prodom/current/cgi-bin/request.pl?question=DBEN&query=' + display_name
     elif source == 'HMMPIR':
-        link = 'http://pir.georgetown.edu/cgi-bin/ipcSF?id=' + db_identifier
+        link = 'http://pir.georgetown.edu/cgi-bin/ipcSF?id=' + display_name
     elif source == 'ProfileScan':
-        link = 'http://prosite.expasy.org/' + db_identifier
+        link = 'http://prosite.expasy.org/' + display_name
     else:
-        print 'No link for source = ' + source + ' ' + str(db_identifier)
+        print 'No link for source = ' + source + ' ' + str(display_name)
         return None
     
-    domain = Domain(source, db_identifier, description, interpro_id, interpro_description, link)
+    if description == 'no description':
+        description = None
+    if interpro_description == 'NULL':
+        interpro_description = None
+    
+    domain = Domain(format_name, display_name, description, interpro_id, interpro_description, link, source)
     return [domain]
 
 def create_domain_from_tf_file(row):
     from model_new_schema.protein import Domain
     
     source = 'JASPAR'
-    db_identifier = row[0]
-    description = row[3]
+    display_name = row[0]
+    format_name = create_format_name(row[0])
+    description = 'Class: ' + row[4] + ', Family: ' + row[3]
     interpro_id = None
     interpro_description = None
     
-    link = 'http://jaspar.genereg.net/cgi-bin/jaspar_db.pl?rm=present&collection=CORE&ID=' + db_identifier
+    link = 'http://jaspar.genereg.net/cgi-bin/jaspar_db.pl?rm=present&collection=CORE&ID=' + display_name
     
-    domain = Domain(source, db_identifier, description, interpro_id, interpro_description, link)
+    domain = Domain(format_name, display_name, description, interpro_id, interpro_description, link, source)
     return [domain]
 
 def convert_domain(new_session_maker, chunk_size):
@@ -180,12 +186,12 @@ def convert_domain(new_session_maker, chunk_size):
         key_to_current_obj = dict([(x.unique_key(), x) for x in current_objs])
                 
         #Values to check
-        values_to_check = ['description', 'interpro_id', 'interpro_description', 'link']
+        values_to_check = ['display_name', 'description', 'interpro_id', 'interpro_description', 'link']
         
         untouched_obj_ids = set(id_to_current_obj.keys())
         
         #Grab old objects
-        data = break_up_file('/Users/kpaskov/final/domains.tab.tab')
+        data = break_up_file('/Users/kpaskov/final/yeastmine_protein_domains.tsv')
         
         used_unique_keys = set()   
         
@@ -227,11 +233,10 @@ def convert_domain(new_session_maker, chunk_size):
                 #Edit or add new objects
                 for newly_created_obj in newly_created_objs:
                     unique_key = newly_created_obj.unique_key()
-                    if unique_key not in used_unique_keys:
-                        current_obj_by_id = None if newly_created_obj.id not in id_to_current_obj else id_to_current_obj[newly_created_obj.id]
-                        current_obj_by_key = None if unique_key not in key_to_current_obj else key_to_current_obj[unique_key]
-                        create_or_update(newly_created_obj, current_obj_by_id, current_obj_by_key, values_to_check, new_session, output_creator)
-                        used_unique_keys.add(unique_key)
+                    current_obj_by_id = None if newly_created_obj.id not in id_to_current_obj else id_to_current_obj[newly_created_obj.id]
+                    current_obj_by_key = None if unique_key not in key_to_current_obj else key_to_current_obj[unique_key]
+                    create_or_update(newly_created_obj, current_obj_by_id, current_obj_by_key, values_to_check, new_session, output_creator)
+                    used_unique_keys.add(unique_key)
                         
                     if current_obj_by_id is not None and current_obj_by_id.id in untouched_obj_ids:
                         untouched_obj_ids.remove(current_obj_by_id.id)
@@ -267,23 +272,31 @@ def create_domain_evidence_id(row_id):
 def create_domain_evidence(row, row_id, key_to_bioentity, key_to_domain):
     from model_new_schema.protein import Domainevidence
     
-    bioent_format_name = row[0]
-    source = row[3]
-    db_identifier = row[4]
-    start = int(row[6])
-    end = int(row[7])
-    evalue = row[8]
-    status = row[9]
-    date_of_run = row[10]
+    bioent_format_name = row[1].strip()
+    source = row[13].strip()
+    domain_format_name = create_format_name(row[3].strip())
+    start = row[10].strip()
+    end = row[11].strip()
+    evalue = row[12].strip()
+    status = None
+    date_of_run = None
     
-    bioent_key = (bioent_format_name + 'p', 'PROTEIN')
+    bioent_key = (bioent_format_name + 'P', 'PROTEIN')
     if bioent_key not in key_to_bioentity:
-        print 'Protein not found. ' + bioent_format_name + 'p'
+        print 'Protein not found. ' + bioent_format_name + 'P'
         return None
     protein_id = key_to_bioentity[bioent_key].id
     
-    domain_key = (db_identifier, source)
+    if source == 'HMMSmart':
+        source = 'SMART'
+    if source == 'HMMPanther':
+        source = 'Panther'
+    if source == 'FPrintScan':
+        source = 'PRINTS'
+    
+    domain_key = (domain_format_name, source)
     if domain_key not in key_to_domain:
+        print 'Domain not found. ' + domain_format_name
         return None
     domain_id = key_to_domain[domain_key].id
     
@@ -291,7 +304,7 @@ def create_domain_evidence(row, row_id, key_to_bioentity, key_to_domain):
     strain_id = 1
     
     domain_evidence = Domainevidence(create_domain_evidence_id(row_id), None, strain_id, source, 
-                                     start, end, evalue, status, date_of_run, protein_id, domain_id, None, None)
+                                     int(start), int(end), evalue, status, date_of_run, protein_id, domain_id, None, None)
     return [domain_evidence]
 
 def create_domain_evidence_from_tf_file(row, row_id, key_to_bioentity, key_to_domain, pubmed_id_to_reference_id):
@@ -306,9 +319,9 @@ def create_domain_evidence_from_tf_file(row, row_id, key_to_bioentity, key_to_do
     date_of_run = None
     pubmed_id = row[6]
     
-    bioent_key = (bioent_format_name + 'p', 'PROTEIN')
+    bioent_key = (bioent_format_name + 'P', 'PROTEIN')
     if bioent_key not in key_to_bioentity:
-        print 'Protein not found. ' + bioent_format_name + 'p'
+        print 'Protein not found. ' + bioent_format_name + 'P'
         return None
     protein = key_to_bioentity[bioent_key]
     protein_id = protein.id
@@ -358,7 +371,7 @@ def convert_domain_evidence(new_session_maker, chunk_size):
         untouched_obj_ids = set(id_to_current_obj.keys())
         
         #Grab old objects
-        data = break_up_file('/Users/kpaskov/final/domains.tab.tab')
+        data = break_up_file('/Users/kpaskov/final/yeastmine_protein_domains.tsv')
         
         used_unique_keys = set()   
         
@@ -375,7 +388,8 @@ def convert_domain_evidence(new_session_maker, chunk_size):
                 if newly_created_objs is not None:
                     #Edit or add new objects
                     for newly_created_obj in newly_created_objs:
-                        unique_key = newly_created_obj.unique_key()
+                        unique_key = (newly_created_obj.protein_id, newly_created_obj.domain_id, newly_created_obj.start,
+                                      newly_created_obj.end, newly_created_obj.evalue)
                         if unique_key not in used_unique_keys:
                             current_obj_by_id = None if newly_created_obj.id not in id_to_current_obj else id_to_current_obj[newly_created_obj.id]
                             current_obj_by_key = None if unique_key not in key_to_current_obj else key_to_current_obj[unique_key]
@@ -454,7 +468,7 @@ def convert(old_session_maker, new_session_maker):
     
     #convert_domain(new_session_maker, 5000)
     
-    convert_domain_evidence(new_session_maker, 5000)
+    #convert_domain_evidence(new_session_maker, 5000)
     
     log.info('complete')
     

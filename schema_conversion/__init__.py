@@ -329,11 +329,11 @@ def execute_conversion_file(convert_f, new_session_maker, ask, **kwargs):
     finally:
         new_session.close()  
         
-def break_up_file(filename):
+def break_up_file(filename, delimeter='\t'):
     rows = []
     f = open(filename, 'r')
     for line in f:
-        rows.append(line.split('\t'))
+        rows.append(line.split(delimeter))
     f.close()
     return rows
 

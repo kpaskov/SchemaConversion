@@ -31,6 +31,9 @@ def create_experiment_id_from_reg_row(old_experiment_id, format_name):
         return 700000
     else:
         return old_experiment_id + 700001
+    
+def create_experiment_id_from_binding_row(old_experiment_id, format_name):
+    return old_experiment_id + 900000
 
 def create_experiment(old_cv_term):
     from model_new_schema.evelement import Experiment as NewExperiment
@@ -50,9 +53,22 @@ def create_experiment_from_reg_row(display_name, eco_id, row_id):
     if display_name is None:
         display_name = eco_id
     format_name = create_format_name(display_name)
+    
+    if display_name.endswith('evidence'):
+        display_name = display_name[:-9]
+        
     link = experiment_link(format_name)
 
     new_experiment = Experiment(create_experiment_id_from_reg_row(row_id, format_name), display_name, format_name, link, None, eco_id, None, None)
+    return [new_experiment]
+
+def create_experiment_from_binding_row(display_name, row_id):
+    from model_new_schema.evelement import Experiment
+    
+    format_name = create_format_name(display_name)
+    link = experiment_link(format_name)
+
+    new_experiment = Experiment(create_experiment_id_from_binding_row(row_id, format_name), display_name, format_name, link, None, None, None, None)
     return [new_experiment]
 
 def convert_experiment(old_session_maker, new_session_maker):
@@ -98,24 +114,34 @@ def convert_experiment(old_session_maker, new_session_maker):
         #Get experiments from regulation files
         experiment_names = set()
         
-        rows = break_up_file('/Users/kpaskov/final/combined24042013.txt')
+        rows = break_up_file('/Users/kpaskov/final/yeastmine_regulation.tsv')
         experiment_names.update([(row[4], row[5]) for row in rows])
-            
-        rows = break_up_file('/Users/kpaskov/final/harbison24042013.txt')
-        experiment_names.update([(row[4], row[5]) for row in rows])
-            
-        rows = break_up_file('/Users/kpaskov/final/Li_et_al25042013.txt')
-        experiment_names.update([(row[4], row[5]) for row in rows])
-            
-        rows = break_up_file('/Users/kpaskov/final/venters24042013.txt')
-        experiment_names.update([(row[4], row[5]) for row in rows])
-            
-        rows = break_up_file('/Users/kpaskov/final/HTP_reg_data_for_YM_02-15-2013')
-        experiment_names.update([(None, row[5]) for row in rows])
                 
         i=0
         for experiment_name, eco_id in experiment_names:
             newly_created_objs = create_experiment_from_reg_row(experiment_name, eco_id, i)
+            for newly_created_obj in newly_created_objs:
+                current_obj_by_id = None if newly_created_obj.id not in id_to_current_obj else id_to_current_obj[newly_created_obj.id]
+                current_obj_by_key = None if newly_created_obj.unique_key() not in key_to_current_obj else key_to_current_obj[newly_created_obj.unique_key()]
+                create_or_update(newly_created_obj, current_obj_by_id, current_obj_by_key, values_to_check, new_session, output_creator)
+                        
+                if current_obj_by_id is not None and current_obj_by_id.id in untouched_obj_ids:
+                    untouched_obj_ids.remove(current_obj_by_id.id)
+                if current_obj_by_key is not None and current_obj_by_key.id in untouched_obj_ids:
+                    untouched_obj_ids.remove(current_obj_by_key.id)                        
+                i = i+1
+          
+        experiment_names = set()      
+        #Add experiments from binding files
+        rows = break_up_file('/Users/kpaskov/final/yetfasco_data.txt', delimeter=';')
+        for row in rows:
+            if len(row) < 10:
+                print row
+        experiment_names.update([row[9][1:-1] for row in rows])
+        
+        i=0
+        for experiment_name in experiment_names:
+            newly_created_objs = create_experiment_from_binding_row(experiment_name, i)
             for newly_created_obj in newly_created_objs:
                 current_obj_by_id = None if newly_created_obj.id not in id_to_current_obj else id_to_current_obj[newly_created_obj.id]
                 current_obj_by_key = None if newly_created_obj.unique_key() not in key_to_current_obj else key_to_current_obj[newly_created_obj.unique_key()]
@@ -416,11 +442,11 @@ def convert(old_session_maker, new_session_maker):
     
     convert_experiment(old_session_maker, new_session_maker)
     
-    convert_experiment_alias(old_session_maker, new_session_maker)
+    #convert_experiment_alias(old_session_maker, new_session_maker)
     
-    convert_experiment_relation(old_session_maker, new_session_maker)
+    #convert_experiment_relation(old_session_maker, new_session_maker)
     
-    convert_strain(old_session_maker, new_session_maker)
+    #convert_strain(old_session_maker, new_session_maker)
 
     log.info('complete')
 
