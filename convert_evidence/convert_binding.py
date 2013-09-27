@@ -3,12 +3,11 @@ Created on Sep 23, 2013
 
 @author: kpaskov
 '''
-from convert_core import create_or_update
+from convert_core import create_or_update, set_up_logging
 from mpmath import ceil
 from schema_conversion import new_config, prepare_schema_connection, \
     create_format_name, break_up_file
 from schema_conversion.output_manager import OutputCreator
-from datetime import datetime
 import logging
 import model_new_schema
 import sys
@@ -140,15 +139,7 @@ def convert_evidence(new_session_maker, chunk_size):
 """  
 
 def convert(new_session_maker, ask):
-    logging.basicConfig(format='%(asctime)s %(name)s: %(message)s', level=logging.DEBUG, datefmt='%m/%d/%Y %H:%M:%S')
-    
-    log = logging.getLogger('convert.binding')
-    
-    hdlr = logging.FileHandler('/Users/kpaskov/Documents/Schema Conversion Logs/convert.binding.' + str(datetime.now()) + '.txt')
-    formatter = logging.Formatter('%(asctime)s %(name)s: %(message)s', '%m/%d/%Y %H:%M:%S')
-    hdlr.setFormatter(formatter)
-    log.addHandler(hdlr) 
-    log.setLevel(logging.DEBUG)
+    log = set_up_logging('convert.binding')
     
     log.info('begin')
     

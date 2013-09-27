@@ -3,13 +3,12 @@ Created on Jun 4, 2013
 
 @author: kpaskov
 '''
-from convert_core import create_or_update
+from convert_core import create_or_update, set_up_logging
 from schema_conversion import prepare_schema_connection, create_format_name, \
     new_config, old_config, break_up_file
 from schema_conversion.output_manager import OutputCreator
 from sqlalchemy.orm import joinedload
 from utils.link_maker import experiment_link, strain_link
-from datetime import datetime
 import logging
 import model_new_schema
 import model_old_schema
@@ -428,25 +427,18 @@ def convert_strain(old_session_maker, new_session_maker):
 """  
 
 def convert(old_session_maker, new_session_maker):
-    logging.basicConfig(format='%(asctime)s %(name)s: %(message)s', level=logging.DEBUG, datefmt='%m/%d/%Y %H:%M:%S')
-    
-    log = logging.getLogger('convert.evelements')
-    
-    hdlr = logging.FileHandler('/Users/kpaskov/Documents/Schema Conversion Logs/convert.evelements.' + str(datetime.now()) + '.txt')
-    formatter = logging.Formatter('%(asctime)s %(name)s: %(message)s', '%m/%d/%Y %H:%M:%S')
-    hdlr.setFormatter(formatter)
-    log.addHandler(hdlr) 
-    log.setLevel(logging.DEBUG)
+    log = set_up_logging('convert.evelements')
+
     
     log.info('begin')
     
     convert_experiment(old_session_maker, new_session_maker)
     
-    #convert_experiment_alias(old_session_maker, new_session_maker)
+    convert_experiment_alias(old_session_maker, new_session_maker)
     
-    #convert_experiment_relation(old_session_maker, new_session_maker)
+    convert_experiment_relation(old_session_maker, new_session_maker)
     
-    #convert_strain(old_session_maker, new_session_maker)
+    convert_strain(old_session_maker, new_session_maker)
 
     log.info('complete')
 

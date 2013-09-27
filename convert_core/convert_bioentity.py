@@ -3,13 +3,12 @@ Created on May 31, 2013
 
 @author: kpaskov
 '''
-from convert_core import create_or_update
+from convert_core import create_or_update, set_up_logging
 from mpmath import ceil
 from schema_conversion import prepare_schema_connection, new_config, old_config
 from schema_conversion.output_manager import OutputCreator
 from sqlalchemy.orm import joinedload
 from utils.link_maker import bioent_link
-from datetime import datetime
 import logging
 import model_new_schema
 import model_old_schema
@@ -18,6 +17,7 @@ import sys
 #Recorded times: 
 #Maitenance (cherry-vm08): 2:56, 2:59 
 #First Load (sgd-ng1): 4:08, 3:49
+#Maitenance (sgd-ng1): 4:17
 
 """
 --------------------- Convert Locus ---------------------
@@ -343,7 +343,7 @@ def convert_url(old_session_maker, new_session_maker, chunk_size):
         id_to_bioentity = dict([(x.id, x) for x in new_session.query(NewBioentity).all()])
         
         #Urls of interest
-        old_web_displays = old_session.query(OldWebDisplay).filter(OldWebDisplay.label_location == 'Interaction Resources').all()
+        old_web_displays = old_session.query(OldWebDisplay).filter(OldWebDisplay.label_location == 'Interactions Resources').all()
         url_to_display = dict([(x.url_id, x) for x in old_web_displays])
                 
         count = max(id_to_bioentity.keys())
@@ -486,15 +486,7 @@ def convert_qualifier_evidence(old_session_maker, new_session_maker):
 """   
 
 def convert(old_session_maker, new_session_maker):  
-    logging.basicConfig(format='%(asctime)s %(name)s: %(message)s', level=logging.DEBUG, datefmt='%m/%d/%Y %H:%M:%S')
-    
-    log = logging.getLogger('convert.bioentity')
-    
-    hdlr = logging.FileHandler('/Users/kpaskov/Documents/Schema Conversion Logs/convert.bioentity.' + str(datetime.now()) + '.txt')
-    formatter = logging.Formatter('%(asctime)s %(name)s: %(message)s', '%m/%d/%Y %H:%M:%S')
-    hdlr.setFormatter(formatter)
-    log.addHandler(hdlr) 
-    log.setLevel(logging.DEBUG)
+    log = set_up_logging('convert.bioentity')
     
     log.info('begin')
         

@@ -3,8 +3,7 @@ Created on Sep 20, 2013
 
 @author: kpaskov
 '''
-from convert_core import create_or_update
-from datetime import datetime
+from convert_core import create_or_update, set_up_logging
 from mpmath import ceil
 from schema_conversion import prepare_schema_connection, new_config, old_config, \
     break_up_file, create_format_name
@@ -452,23 +451,16 @@ def convert_domain_evidence(new_session_maker, chunk_size):
 """   
 
 def convert(old_session_maker, new_session_maker):  
-    logging.basicConfig(format='%(asctime)s %(name)s: %(message)s', level=logging.DEBUG, datefmt='%m/%d/%Y %H:%M:%S')
-    
-    log = logging.getLogger('convert.protein')
-    
-    hdlr = logging.FileHandler('/Users/kpaskov/Documents/Schema Conversion Logs/convert.protein.' + str(datetime.now()) + '.txt')
-    formatter = logging.Formatter('%(asctime)s %(name)s: %(message)s', '%m/%d/%Y %H:%M:%S')
-    hdlr.setFormatter(formatter)
-    log.addHandler(hdlr) 
-    log.setLevel(logging.DEBUG)
+    log = set_up_logging('convert.protein')
+
     
     log.info('begin')
         
     convert_protein(old_session_maker, new_session_maker)
     
-    #convert_domain(new_session_maker, 5000)
+    convert_domain(new_session_maker, 5000)
     
-    #convert_domain_evidence(new_session_maker, 5000)
+    convert_domain_evidence(new_session_maker, 5000)
     
     log.info('complete')
     

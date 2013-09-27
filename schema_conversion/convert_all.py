@@ -5,82 +5,71 @@ Created on Jul 3, 2013
 '''
 
 from convert_core import convert_reference, convert_bioentity, \
-    convert_evelements
-from convert_evidence import convert_interaction, convert_literature
-from email.mime.text import MIMEText
+    convert_evelements, convert_protein
+from convert_evidence import convert_interaction, convert_literature, \
+    convert_regulation
 from schema_conversion import new_config, old_config, prepare_schema_connection
-from schema_conversion.output_manager import output, write_to_output_file
+import logging
 import model_new_schema
 import model_old_schema
-import smtplib
 import sys
 
-def send_output_email():
-
-    # Create a text/plain message
-    msg = MIMEText('\n'.join(output), 'plain')
-
-    # me == the sender's email address
-    # you == the recipient's email address
-    msg['Subject'] = 'Schema Conversion'
-    msg['From'] = 'kpaskov@stanford.edu'
-    msg['To'] = 'kpaskov@stanford.edu'
-
-    # Send the message via our own SMTP server, but don't include the
-    # envelope header.
-    s = smtplib.SMTP('smtp.stanford.edu')
-    s.set_debuglevel(1) 
-    s.ehlo() 
-    s.starttls() 
-    s.ehlo() 
-    s.sendmail('kpaskov@stanford.edu', ['kpaskov@stanford.edu'], msg.as_string())
-    s.quit()
-
-if __name__ == "__main__":
-    output[:] = []
-    
+if __name__ == "__main__":    
     old_session_maker = prepare_schema_connection(model_old_schema, old_config)
     new_session_maker = prepare_schema_connection(model_new_schema, new_config)
     
-    write_to_output_file( '----------------------------------------')
-    write_to_output_file( 'Convert Bioentities')
-    write_to_output_file( '----------------------------------------')
-    try:
-        convert_bioentity.convert(old_session_maker, new_session_maker, ask=False)  
-    except Exception:
-        write_to_output_file( "Unexpected error:" + str(sys.exc_info()[0]) )
-        
-    write_to_output_file( '----------------------------------------')
-    write_to_output_file( 'Convert References')
-    write_to_output_file( '----------------------------------------')
-    try:
-        convert_reference.convert(old_session_maker, new_session_maker, ask=False)
-    except Exception:
-        write_to_output_file( "Unexpected error:" + str(sys.exc_info()[0]) )
-      
-    write_to_output_file( '----------------------------------------')
-    write_to_output_file( 'Convert Evelements')
-    write_to_output_file( '----------------------------------------'  )
+    #Evelement
     try:
         convert_evelements.convert(old_session_maker, new_session_maker, ask=False)
     except Exception:
-        write_to_output_file( "Unexpected error:" + str(sys.exc_info()[0]) )
+        log = logging.getLogger('convert.evelements')
+        log.error( "Unexpected error:" + str(sys.exc_info()[0]) )
+    
+    #Reference
+    try:
+        convert_reference.convert(old_session_maker, new_session_maker, ask=False)
+    except Exception:
+        log = logging.getLogger('convert.reference')
+        log.error( "Unexpected error:" + str(sys.exc_info()[0]) )
         
-    write_to_output_file( '----------------------------------------')
-    write_to_output_file( 'Convert Interactions')
-    write_to_output_file( '----------------------------------------'  )
+    #Bioentity
+    try:
+        convert_bioentity.convert(old_session_maker, new_session_maker, ask=False)  
+    except Exception:
+        log = logging.getLogger('convert.bioentity')
+        log.error( "Unexpected error:" + str(sys.exc_info()[0]) )
+        
+    #Protein
+    try:
+        convert_protein.convert(old_session_maker, new_session_maker, ask=False)  
+    except Exception:
+        log = logging.getLogger('convert.protein')
+        log.error( "Unexpected error:" + str(sys.exc_info()[0]) )
+        
+    #Regulation
+    try:
+        convert_regulation.convert(old_session_maker, new_session_maker, ask=False)  
+    except Exception:
+        log = logging.getLogger('convert.regulation')
+        log.error( "Unexpected error:" + str(sys.exc_info()[0]) )
+        
+    #Phenotype
+    
+    #Interaction
     try:
         convert_interaction.convert(old_session_maker, new_session_maker, ask=False)
     except Exception:
-        write_to_output_file( "Unexpected error:" + str(sys.exc_info()[0]) )
+        log = logging.getLogger('convert.interaction')
+        log.error( "Unexpected error:" + str(sys.exc_info()[0]) )
         
-    write_to_output_file( '----------------------------------------')
-    write_to_output_file( 'Convert Literature')
-    write_to_output_file( '----------------------------------------'  )
+    #Literature
     try:
         convert_literature.convert(old_session_maker, new_session_maker, ask=False)
     except Exception:
-        write_to_output_file( "Unexpected error:" + str(sys.exc_info()[0]) )
+        log = logging.getLogger('convert.literature')
+        log.error( "Unexpected error:" + str(sys.exc_info()[0]) )
         
-    send_output_email()
-        
+    #GO
+    
+    
+    

@@ -3,7 +3,7 @@ Created on Feb 27, 2013
 
 @author: kpaskov
 '''
-from convert_core import create_or_update
+from convert_core import create_or_update, set_up_logging
 from mpmath import ceil
 from schema_conversion import prepare_schema_connection, create_format_name, \
     new_config, old_config
@@ -11,15 +11,16 @@ from schema_conversion.output_manager import OutputCreator
 from sqlalchemy.orm import joinedload
 from sqlalchemy.sql.expression import func
 from utils.link_maker import author_link, reference_link
-from datetime import datetime
 import logging
 import model_new_schema
 import model_old_schema
+import requests
 import sys
 
 #Recorded times: 
 #Maitenance (cherry-vm08): 51:17
 #First Load (sgd-ng1): 35:28
+#Maitenance (sgd-ng1): 26:20
 
 """
 --------------------- Convert Journal ---------------------
@@ -195,7 +196,32 @@ def create_display_name(citation):
     display_name = citation[:citation.find(")")+1]
     return display_name
 
-def create_reference(old_reference, key_to_journal, key_to_book):
+def get_pubmed_central_ids(pubmed_ids, chunk_size=200):
+    pubmed_id_to_central_id = {}
+    count = len(pubmed_ids)
+    num_chunks = ceil(1.0*count/chunk_size)
+    min_id = 0
+    for i in range(0, num_chunks):
+        chunk_of_pubmed_ids = pubmed_ids[min_id:min_id+chunk_size]
+        url = 'http://eutils.ncbi.nlm.nih.gov/entrez/eutils/elink.fcgi?dbfrom=pubmed&db=pmc&id='
+        url = url + '&id='.join([str(x) for x in chunk_of_pubmed_ids])
+        r = requests.get(url)
+        xml = str(r.text)
+        pieces = xml.split('<LinkSet>')
+        j = 0
+        for piece in pieces[1:]:
+            pubmed_id = chunk_of_pubmed_ids[j]
+            linksets = piece.split('<LinkSetDb>')
+            pubmed_id_to_central_id[pubmed_id] = None
+            for linkset in linksets[1:]:
+                if '<LinkName>pubmed_pmc</LinkName>' in linkset:
+                    pubmed_central_id = int(linkset[linkset.index('<Id>')+4:linkset.index('</Id>')])
+                    pubmed_id_to_central_id[pubmed_id] = pubmed_central_id
+            j = j+1
+        min_id = min_id + chunk_size
+    return pubmed_id_to_central_id
+
+def create_reference(old_reference, key_to_journal, key_to_book, pubmed_id_to_pubmed_central_id):
     from model_new_schema.reference import Reference as NewReference
     
     citation = create_citation(old_reference.citation)
@@ -228,8 +254,10 @@ def create_reference(old_reference, key_to_journal, key_to_book):
         book_id = key_to_book[book_key].id
         
     pubmed_id = None
+    pubmed_central_id = None
     if old_reference.pubmed_id is not None:
         pubmed_id = int(old_reference.pubmed_id)
+        pubmed_central_id = pubmed_id_to_pubmed_central_id[pubmed_id]
         
     year = None
     if old_reference.year is not None:
@@ -240,7 +268,7 @@ def create_reference(old_reference, key_to_journal, key_to_book):
         date_revised = int(old_reference.date_revised)
     
     new_ref = NewReference(old_reference.id, display_name, format_name, link, old_reference.source, 
-                           old_reference.status, pubmed_id,
+                           old_reference.status, pubmed_id, pubmed_central_id,
                            old_reference.pdf_status, citation, year, 
                            old_reference.date_published, date_revised, 
                            old_reference.issue, old_reference.page, old_reference.volume, old_reference.title,
@@ -262,8 +290,8 @@ def convert_reference(old_session_maker, new_session_maker, chunk_size):
                 
         #Values to check
         values_to_check = ['display_name', 'format_name', 'link', 'source', 
-                       'status', 'pubmed_id', 'pdf_status', 'year', 'date_published', 
-                       'date_revised', 'issue', 'page', 'volume', 'title', 
+                       'status', 'pubmed_id', 'pubmed_central_id', 'pdf_status', 'year', 'date_published', 
+                       'date_revised', 'issue', 'page', 'volume', 'title',
                        'journal_id', 'book_id', 'doi',
                        'created_by', 'date_created']
                 
@@ -294,10 +322,13 @@ def convert_reference(old_session_maker, new_session_maker, chunk_size):
                                             OldReference.id <=  min_id+chunk_size).options(
                                             joinedload('book'), 
                                             joinedload('journal')).all()
+                                            
+            old_pubmed_ids = [x.pubmed_id for x in old_objs if x.pubmed_id is not None]
+            pubmed_id_to_pubmed_central_id = get_pubmed_central_ids(old_pubmed_ids)
             
             for old_obj in old_objs:
                 #Convert old objects into new ones
-                newly_created_objs = create_reference(old_obj, key_to_journal, key_to_book)
+                newly_created_objs = create_reference(old_obj, key_to_journal, key_to_book, pubmed_id_to_pubmed_central_id)
                 
                 if newly_created_objs is not None:
                     #Edit or add new objects
@@ -1025,37 +1056,22 @@ def convert_alias(old_session_maker, new_session_maker, chunk_size):
 --------------------- Convert Reference URL ---------------------
 """
 
-def create_url(old_ref_url, url_id_to_old_webdisplays, reference_id_to_pubmed_id, id_to_url):
+def create_url(reference):
     from model_new_schema.reference import Referenceurl as NewReferenceurl
- 
-    reference_id = old_ref_url.reference_id
-    if reference_id not in reference_id_to_pubmed_id:
-        print 'Reference does not exist. ' + str(reference_id)
-        return None
     
-    url_id = old_ref_url.url_id
-    url = id_to_url[url_id]
-    link = url.url
-    if url.substitution_value is not None:
-        pubmed_id = reference_id_to_pubmed_id[reference_id]
-        link = link.replace('_SUBSTITUTE_THIS_', str(pubmed_id))
-        
-    display_name = link
-    if url_id in url_id_to_old_webdisplays:
-        old_webdisplays = url_id_to_old_webdisplays[url.id]
-        for old_webdisplay in old_webdisplays:
-            potential_name = old_webdisplay.label_name
-            if potential_name != 'default' and (display_name is None or len(potential_name) > len(display_name)):
-                display_name = potential_name
-    
-    new_ref_url = NewReferenceurl(display_name, url.source, link, None, reference_id, 
-                                  url.date_created, url.created_by)
-    return [new_ref_url]
+    new_urls = []
+    new_urls.append(NewReferenceurl('PubMed', 'PubMed', 'http://www.ncbi.nlm.nih.gov/pubmed/' + str(reference.pubmed_id), 
+                                  reference.id, 'PUBMED', None, None))
+    if reference.doi is not None:
+        new_urls.append(NewReferenceurl('Full-Text', 'DOI', 'http://dx.doi.org/' + reference.doi, 
+                                  reference.id, 'FULLTEXT', None, None))
+    if reference.pubmed_central_id is not None:
+        new_urls.append(NewReferenceurl('PMC', 'PubMedCentral', 'http://www.ncbi.nlm.nih.gov/pmc/articles/' + str(reference.pubmed_central_id), 
+                                  reference.id, 'PUBMEDCENTRAL', None, None))
+    return new_urls
 
-def convert_url(old_session_maker, new_session_maker, chunk_size):
-    from model_new_schema.reference import Reference as NewReference, Referenceurl as NewReferenceurl
-    from model_old_schema.reference import Ref_URL as OldRef_URL, Reference as OldReference
-    from model_old_schema.general import Url as OldUrl, WebDisplay as OldWebDisplay
+def convert_url(new_session_maker, chunk_size):
+    from model_new_schema.reference import Reference, Referenceurl as NewReferenceurl
     
     log = logging.getLogger('convert.reference.reference_url')
     log.info('begin')
@@ -1066,24 +1082,9 @@ def convert_url(old_session_maker, new_session_maker, chunk_size):
         new_session = new_session_maker()
                 
         #Values to check
-        values_to_check = ['display_name', 'category', 'source', 'date_created', 'created_by', 'reference_id']
-                
-        #Grab cached dictionaries
-        reference_id_to_pubmed_id = dict([(x.id, x.pubmed_id) for x in new_session.query(NewReference).all()])
+        values_to_check = ['display_name', 'category', 'source', 'date_created', 'created_by', 'reference_id', 'url_type']
         
-        #Grab old objects
-        old_session = old_session_maker()
-        
-        id_to_url = dict([(x.id, x) for x in old_session.query(OldUrl).all()])
-        url_id_to_old_webdisplays = {}
-        for webdisplay in old_session.query(OldWebDisplay).all():
-            url_id = webdisplay.url_id
-            if url_id in url_id_to_old_webdisplays:
-                url_id_to_old_webdisplays[url_id].add(webdisplay)
-            else:
-                url_id_to_old_webdisplays[url_id] = set([webdisplay])
-        
-        count = old_session.query(func.max(OldReference.id)).first()[0]
+        count = new_session.query(func.max(Reference.id)).first()[0]
         num_chunks = ceil(1.0*count/chunk_size)
         min_id = 0
         for i in range(0, num_chunks):
@@ -1095,13 +1096,13 @@ def convert_url(old_session_maker, new_session_maker, chunk_size):
             untouched_obj_ids = set(id_to_current_obj.keys())
         
             #Grab old objects
-            old_objs = old_session.query(OldRef_URL).filter(
-                                            OldRef_URL.reference_id >= min_id).filter(
-                                            OldRef_URL.reference_id <=  min_id+chunk_size).all()
+            old_objs = new_session.query(Reference).filter(
+                                            Reference.id >= min_id).filter(
+                                            Reference.id <=  min_id+chunk_size).all()
             
             for old_obj in old_objs:
                 #Convert old objects into new ones
-                newly_created_objs = create_url(old_obj, url_id_to_old_webdisplays, reference_id_to_pubmed_id, id_to_url)
+                newly_created_objs = create_url(old_obj)
                 
                 if newly_created_objs is not None:
                     #Edit or add new objects
@@ -1133,7 +1134,6 @@ def convert_url(old_session_maker, new_session_maker, chunk_size):
         log.exception('Unexpected error:' + str(sys.exc_info()[0]))
     finally:
         new_session.close()
-        old_session.close()
         
     log.info('complete')
      
@@ -1142,39 +1142,33 @@ def convert_url(old_session_maker, new_session_maker, chunk_size):
 """   
 
 def convert(old_session_maker, new_session_maker):
-    logging.basicConfig(format='%(asctime)s %(name)s: %(message)s', level=logging.DEBUG, datefmt='%m/%d/%Y %H:%M:%S')
-    
-    log = logging.getLogger('convert.reference')
-    
-    hdlr = logging.FileHandler('/Users/kpaskov/Documents/Schema Conversion Logs/convert.reference.' + str(datetime.now()) + '.txt')
-    formatter = logging.Formatter('%(asctime)s %(name)s: %(message)s', '%m/%d/%Y %H:%M:%S')
-    hdlr.setFormatter(formatter)
-    log.addHandler(hdlr) 
-    log.setLevel(logging.DEBUG)
-    
+    log = set_up_logging('convert.reference')
+    requests_log = logging.getLogger("requests")
+    requests_log.setLevel(logging.WARNING)
+            
     log.info('begin')
         
-    convert_journal(old_session_maker, new_session_maker)
+    #convert_journal(old_session_maker, new_session_maker)
     
-    convert_book(old_session_maker, new_session_maker)
+    #convert_book(old_session_maker, new_session_maker)
     
-    convert_reference(old_session_maker, new_session_maker, 3000)
+    #convert_reference(old_session_maker, new_session_maker, 3000)
     
-    convert_abstract(old_session_maker, new_session_maker, 3000)
+    #convert_abstract(old_session_maker, new_session_maker, 3000)
     
-    convert_author(old_session_maker, new_session_maker, 10000)
+    #convert_author(old_session_maker, new_session_maker, 10000)
     
-    convert_author_reference(old_session_maker, new_session_maker, 10000)
+    #convert_author_reference(old_session_maker, new_session_maker, 10000)
     
-    convert_reftype(old_session_maker, new_session_maker)
+    #convert_reftype(old_session_maker, new_session_maker)
     
-    convert_reference_relation(old_session_maker, new_session_maker)
+    #convert_reference_relation(old_session_maker, new_session_maker)
     
-    convert_alias(old_session_maker, new_session_maker, 3000)
+    #convert_alias(old_session_maker, new_session_maker, 3000)
     
-    convert_url(old_session_maker, new_session_maker, 3000)
+    convert_url(new_session_maker, 3000)
         
-    convert_bibentry(new_session_maker, 3000)
+    #convert_bibentry(new_session_maker, 3000)
     
     log.info('complete')
    
