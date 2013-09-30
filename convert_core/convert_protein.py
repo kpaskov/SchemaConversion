@@ -115,34 +115,43 @@ def create_domain(row):
     
     #Need to check these links
     if source == 'JASPAR':
-        link = 'http://jaspar.genereg.net/cgi-bin/jaspar_db.pl?rm=present&collection=CORE&ID=' + display_name
+        link = "http://jaspar.genereg.net/cgi-bin/jaspar_db.pl?rm=present&collection=CORE&ID=" + display_name
     elif source == 'HMMSmart':
         source = 'SMART'
-        link = 'http://smart.embl-heidelberg.de/smart/do_annotation.pl?DOMAIN=' + display_name
+        link = "http://smart.embl-heidelberg.de/smart/do_annotation.pl?DOMAIN=" + display_name
     elif source == 'HMMPfam':
-        link = 'http://pfam.sanger.ac.uk/family/' + display_name + '?type=Family'
+        source = 'Pfam'
+        link = "http://pfam.sanger.ac.uk/family?type=Family&entry=" + display_name
     elif source == 'Gene3D':
-        link = 'http://www.cathdb.info/version/latest/superfamily/' + display_name[6:]
+        link = "http://www.cathdb.info/version/latest/superfamily/" + display_name[6:]
     elif source == 'superfamily':
-        link = 'http://supfam.org/SUPERFAMILY/cgi-bin/scop.cgi?ipid=' + display_name
+        source = 'SUPERFAMILY'
+        link = "http://supfam.org/SUPERFAMILY/cgi-bin/scop.cgi?ipid=" + display_name
     elif source == 'Seg':
         link = None
     elif source == 'Coil':
         link = None
     elif source == 'HMMPanther':
-        source = 'Panther'
-        link = 'http://www.pantherdb.org/panther/family.do?clsAccession=' + display_name
+        source = 'PANTHER'
+        link = "http://www.pantherdb.org/panther/family.do?clsAccession=" + display_name
     elif source == 'HMMTigr':
-        link = 'http://www.jcvi.org/cgi-bin/tigrfams/HmmReportPage.cgi?acc=' + display_name
+        source = 'TIGRFAMs'
+        link = "http://cmr.tigr.org/tigr-scripts/CMR/HmmReport.cgi?hmm_acc=" + display_name
     elif source == 'FPrintScan':
         source = 'PRINTS'
-        link = 'http://www.bioinf.man.ac.uk/cgi-bin/dbbrowser/sprint/searchprintss.cgi?display_opts=Prints&category=None&queryform=false&prints_accn=' + display_name
+        link = "http:////www.bioinf.man.ac.uk/cgi-bin/dbbrowser/sprint/searchprintss.cgi?display_opts=Prints&amp;category=None&amp;queryform=false&amp;prints_accn=" + display_name
     elif source == 'BlastProDom':
-        link = 'http://prodom.prabi.fr/prodom/current/cgi-bin/request.pl?question=DBEN&query=' + display_name
+        source = 'ProDom'
+        link = "http://prodom.prabi.fr/prodom/current/cgi-bin/request.pl?question=DBEN&amp;query=" + display_name
     elif source == 'HMMPIR':
-        link = 'http://pir.georgetown.edu/cgi-bin/ipcSF?id=' + display_name
+        source = "PIR superfamily"
+        link = "http://pir.georgetown.edu/cgi-bin/ipcSF?" + display_name
     elif source == 'ProfileScan':
-        link = 'http://prosite.expasy.org/' + display_name
+        source = 'PROSITE'
+        link = "http://prodom.prabi.fr/prodom/cgi-bin/prosite-search-ac?" + display_name
+    elif source == 'PatternScan':
+        source = 'PROSITE'
+        link = "http://prodom.prabi.fr/prodom/cgi-bin/prosite-search-ac?" + display_name
     else:
         print 'No link for source = ' + source + ' ' + str(display_name)
         return None
@@ -289,9 +298,19 @@ def create_domain_evidence(row, row_id, key_to_bioentity, key_to_domain):
     if source == 'HMMSmart':
         source = 'SMART'
     if source == 'HMMPanther':
-        source = 'Panther'
+        source = 'PANTHER'
     if source == 'FPrintScan':
         source = 'PRINTS'
+    if source == 'HMMPfam':
+        source = 'Pfam'
+    if source == 'PatternScan' or source == 'ProfileScan':
+        source = 'PROSITE'
+    if source == 'BlastProDom':
+        source = 'ProDom'
+    if source == 'HMMTigr':
+        source = 'TIGRFAMs'
+    if source == 'HMMPIR':
+        source = 'PIR superfamily'
     
     domain_key = (domain_format_name, source)
     if domain_key not in key_to_domain:

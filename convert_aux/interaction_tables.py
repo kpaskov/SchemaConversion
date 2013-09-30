@@ -177,38 +177,38 @@ def create_regulation_family(bioentity, evidence_cutoff, bioent_id_to_target_ids
                 included_neighbor_ids.add(target_id)
                 
     #For now, only make families for genes that have targets.
-    if len(included_neighbor_ids) != 0:
-        #Add regulators           
-        regulator_ids = bioent_id_to_regulator_ids[bioentity_id]
-        for regulator_id in regulator_ids:
-            key = create_directed_key_from_bioents(regulator_id, bioentity_id)
+    #if len(included_neighbor_ids) != 0:
+    #Add regulators           
+    regulator_ids = bioent_id_to_regulator_ids[bioentity_id]
+    for regulator_id in regulator_ids:
+        key = create_directed_key_from_bioents(regulator_id, bioentity_id)
+        if key not in regulation_families:
+            total_count = edge_to_counts[key]
+             
+            if total_count >= evidence_cutoff:
+                regulation_families[key] = RegulationFamily(bioentity_id, regulator_id, bioentity_id, total_count)
+                included_neighbor_ids.add(regulator_id)
+                 
+    #Create connections across star.
+    for neighbor_id in included_neighbor_ids:
+        target_of_neigh_ids = bioent_id_to_target_ids[neighbor_id] & included_neighbor_ids
+        for overlap_id in target_of_neigh_ids:
+            key = create_directed_key_from_bioents(neighbor_id, overlap_id)
             if key not in regulation_families:
                 total_count = edge_to_counts[key]
-                
+             
                 if total_count >= evidence_cutoff:
-                    regulation_families[key] = RegulationFamily(bioentity_id, regulator_id, bioentity_id, total_count)
-                    included_neighbor_ids.add(regulator_id)
-                    
-        #Create connections across star.
-        for neighbor_id in included_neighbor_ids:
-            target_of_neigh_ids = bioent_id_to_target_ids[neighbor_id] & included_neighbor_ids
-            for overlap_id in target_of_neigh_ids:
-                key = create_directed_key_from_bioents(neighbor_id, overlap_id)
-                if key not in regulation_families:
-                    total_count = edge_to_counts[key]
-                
-                    if total_count >= evidence_cutoff:
-                        regulation_families[key] = RegulationFamily(bioentity_id, neighbor_id, overlap_id, total_count)
-                        
-            regulator_of_neigh_ids = bioent_id_to_regulator_ids[neighbor_id] & included_neighbor_ids
-            for overlap_id in regulator_of_neigh_ids:
-                key = create_directed_key_from_bioents(overlap_id, neighbor_id)
-                if key not in regulation_families:
-                    total_count = edge_to_counts[key]
-                
-                    if total_count >= evidence_cutoff:
-                        regulation_families[key] = RegulationFamily(bioentity_id, overlap_id, neighbor_id, total_count)
-   
+                    regulation_families[key] = RegulationFamily(bioentity_id, neighbor_id, overlap_id, total_count)
+                     
+        regulator_of_neigh_ids = bioent_id_to_regulator_ids[neighbor_id] & included_neighbor_ids
+        for overlap_id in regulator_of_neigh_ids:
+            key = create_directed_key_from_bioents(overlap_id, neighbor_id)
+            if key not in regulation_families:
+                total_count = edge_to_counts[key]
+             
+                if total_count >= evidence_cutoff:
+                    regulation_families[key] = RegulationFamily(bioentity_id, overlap_id, neighbor_id, total_count)
+
             
     return regulation_families.values()
 
@@ -240,22 +240,24 @@ def regulation_family_precomp(regulations, max_neighbors, id_to_bioent):
         regulator_ids = bioent_id_to_regulator_ids[bioent_id]
         
         # Calculate evidence cutoffs.
-        evidence_cutoffs = [0, 0, 0, 0]
+        evidence_cutoffs = [0, 0, 0, 0, 0]
         for target_id in target_ids:
             key = create_directed_key_from_bioents(bioent_id, target_id)
             neigh_ev_count = edge_to_counts[key]
-            index = min(neigh_ev_count, 3)
+            index = min(neigh_ev_count, 4)
             evidence_cutoffs[index] = evidence_cutoffs[index]+1
             
         for regulator_id in regulator_ids:
             key = create_directed_key_from_bioents(regulator_id, bioent_id)
             neigh_ev_count = edge_to_counts[key]
-            index = min(neigh_ev_count, 3)
+            index = min(neigh_ev_count, 4)
             evidence_cutoffs[index] = evidence_cutoffs[index]+1
-          
-        if evidence_cutoffs[2] + evidence_cutoffs[3] > max_neighbors:
+         
+        if evidence_cutoffs[3] + evidence_cutoffs[4] > max_neighbors:
+            min_evidence_count = 4  
+        elif evidence_cutoffs[2] + evidence_cutoffs[3] + evidence_cutoffs[4] > max_neighbors:
             min_evidence_count = 3
-        elif evidence_cutoffs[1] + evidence_cutoffs[2] + evidence_cutoffs[3] > max_neighbors:
+        elif evidence_cutoffs[1] + evidence_cutoffs[2] + evidence_cutoffs[3] + evidence_cutoffs[4] > max_neighbors:
             min_evidence_count = 2
         else:
             min_evidence_count = 1 
@@ -284,7 +286,7 @@ def convert_regulation_family(new_session_maker, chunk_size):
         #Grab old objs
         regulations = new_session.query(Interaction).filter(Interaction.class_type == 'REGULATION').all()
         
-        bioent_id_to_evidence_cutoff, bioent_id_to_target_ids, bioent_id_to_regulator_ids, edge_to_counts = regulation_family_precomp(regulations, 50, id_to_bioent)
+        bioent_id_to_evidence_cutoff, bioent_id_to_target_ids, bioent_id_to_regulator_ids, edge_to_counts = regulation_family_precomp(regulations, 100, id_to_bioent)
         
         min_id = 0
         count = new_session.query(func.max(Bioentity.id)).first()[0]

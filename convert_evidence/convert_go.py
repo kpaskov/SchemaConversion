@@ -29,7 +29,7 @@ def create_go(old_go):
     from model_new_schema.go import Go as NewGo
     
     display_name = old_go.go_term
-    format_name = create_format_name(display_name)
+    format_name = str(old_go.go_go_id)
     link = biocon_link('GO', format_name)
     new_go = NewGo(create_go_id(old_go.id), display_name, format_name, link, old_go.go_definition,
                    old_go.go_go_id, abbrev_to_go_aspect[old_go.go_aspect],  

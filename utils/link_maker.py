@@ -6,7 +6,8 @@ Created on Mar 6, 2013
 
 #Bioconcept links
 def biocon_link(biocon_type, format_name):
-    #return '/%s/%s' % (biocon_type, format_name)
+    if biocon_type == 'GO':
+        return 'http://www.yeastgenome.org/cgi-bin/GO/goTerm.pl?goid=' + format_name
     return None
     
 #Bioentity links
