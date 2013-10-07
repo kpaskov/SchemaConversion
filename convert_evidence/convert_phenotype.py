@@ -321,8 +321,12 @@ def create_evidence_chemical(old_evidence, key_to_chemical, id_to_phenoevidence)
     from model_new_schema.evidence import EvidenceChemical as NewEvidenceChemical
     
     evidence_chemicals = []
-    
+        
     new_phenoevidence_id = create_evidence_id(old_evidence.id)
+    if new_phenoevidence_id not in id_to_phenoevidence:
+        print 'Phenoevidence does not exist. ' + str(new_phenoevidence_id)
+        return None
+    
     if old_evidence.experiment is not None:
         chemical_infos = old_evidence.experiment.chemicals
         if chemical_infos is not None:   
@@ -330,15 +334,10 @@ def create_evidence_chemical(old_evidence, key_to_chemical, id_to_phenoevidence)
                 chemical_key = create_format_name(chemical_info[0])
                 if chemical_key not in key_to_chemical:
                     print 'Chemical does not exist. ' + chemical_key
-                    return None
-                chemical_id = key_to_chemical[chemical_key].id
-                chemical_amount = chemical_info[1]
-                
-                if new_phenoevidence_id not in id_to_phenoevidence:
-                    print 'Phenoevidence does not exist. ' + str(new_phenoevidence_id)
-                    return None
-            
-                evidence_chemicals.append(NewEvidenceChemical(new_phenoevidence_id, chemical_id, chemical_amount, 'PHENOTYPE'))
+                else:
+                    chemical_id = key_to_chemical[chemical_key].id
+                    chemical_amount = chemical_info[1]
+                    evidence_chemicals.append(NewEvidenceChemical(new_phenoevidence_id, chemical_id, chemical_amount, 'PHENOTYPE'))
     return evidence_chemicals
 
 def convert_evidence_chemical(old_session_maker, new_session_maker, chunk_size):
@@ -418,7 +417,7 @@ def convert_evidence_chemical(old_session_maker, new_session_maker, chunk_size):
 ---------------------Convert------------------------------
 """  
 
-def convert(old_session_maker, new_session_maker, ask):
+def convert(old_session_maker, new_session_maker):
     log = set_up_logging('convert.phenotype')
     
     log.info('begin')
@@ -438,6 +437,6 @@ def convert(old_session_maker, new_session_maker, ask):
 if __name__ == "__main__":
     old_session_maker = prepare_schema_connection(model_old_schema, old_config)
     new_session_maker = prepare_schema_connection(model_new_schema, new_config)
-    convert(old_session_maker, new_session_maker, False)
+    convert(old_session_maker, new_session_maker)
     
     

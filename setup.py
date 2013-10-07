@@ -8,7 +8,9 @@ CHANGES = open(os.path.join(here, 'CHANGES.txt')).read()
 
 requires = [
     'sprout_orm',
-    'bud_orm'
+    'bud_orm',
+    'requests',
+    'mpmath'
     ]
 
 tests_require = [

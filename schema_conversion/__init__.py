@@ -69,11 +69,11 @@ def float_approx_equal(x, y, tol=1e-18, rel=1e-7):
     assert tests
     return abs(x - y) <= max(tests)
 
-def break_up_file(filename):
+def break_up_file(filename, delimeter='\t'):
     rows = []
     f = open(filename, 'r')
     for line in f:
-        rows.append(line.split('\t'))
+        rows.append(line.split(delimeter))
     f.close()
     return rows
 

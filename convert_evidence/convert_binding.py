@@ -138,7 +138,7 @@ def convert_evidence(new_session_maker, chunk_size):
 ---------------------Convert------------------------------
 """  
 
-def convert(new_session_maker, ask):
+def convert(new_session_maker):
     log = set_up_logging('convert.binding')
     
     log.info('begin')

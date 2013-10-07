@@ -4,8 +4,6 @@ Created on Sep 10, 2013
 @author: kpaskov
 '''
 from convert_aux.auxillary_tables import convert_bioentity_reference
-from convert_aux.interaction_tables import convert_interaction, \
-    convert_regulation_family
 from convert_core import create_or_update, set_up_logging
 from mpmath import ceil
 from schema_conversion import new_config, prepare_schema_connection, \
@@ -47,16 +45,16 @@ def create_evidence(row, row_id, key_to_experiment, key_to_bioent, pubmed_to_ref
     from model_new_schema.regulation import Regulationevidence
     
     #bioent1_gene_name = row[0]
-    bioent1_format_name = row[1].upper()
-    bioent2_format_name = row[3].upper()
-    experiment_format_name = create_format_name(row[4])
-    experiment_eco_id = row[5]
-    conditions = row[6]
+    bioent1_format_name = row[1].upper().strip()
+    bioent2_format_name = row[3].upper().strip()
+    experiment_format_name = create_format_name(row[4].strip())
+    experiment_eco_id = row[5].strip()
+    conditions = row[6].strip()
     #unknown_field1 = row[7]
     #unknown_field2 = row[8]
     #unknown_field3 = row[9]
-    pubmed_id = int(row[10])
-    source = row[11]
+    pubmed_id = int(row[10].strip())
+    source = row[11].strip()
     
     if (bioent1_format_name, 'LOCUS') in key_to_bioent:
         bioent1 = key_to_bioent[(bioent1_format_name, 'LOCUS')]
@@ -91,6 +89,8 @@ def create_evidence(row, row_id, key_to_experiment, key_to_bioent, pubmed_to_ref
     
     if conditions == '""':
         conditions = None
+    else:
+        conditions.replace('??', "&#956;")
         
     strain_id = None
     if pubmed_id in pubmed_to_strain:
@@ -362,25 +362,22 @@ def convert_paragraph_reference(new_session_maker):
 ---------------------Convert------------------------------
 """  
 
-def convert(new_session_maker, ask):
+def convert(new_session_maker):
     log = set_up_logging('convert.regulation')
     
     log.info('begin')
     
-    #convert_evidence(new_session_maker, 10000)    
+    convert_evidence(new_session_maker, 10000)    
         
     from model_new_schema.regulation import Regulationevidence
-    get_bioent_ids_f = lambda x: [x.bioentity_id]
-    #convert_bioentity_reference(new_session_maker, Regulationevidence, 'REGULATION', 'convert.regulation.bioentity_reference', 10000, get_bioent_ids_f)
+    get_bioent_ids_f = lambda x: [x.bioentity1_id, x.bioentity2_id]
     
-    #convert_paragraph(new_session_maker)
+    convert_paragraph(new_session_maker)
     
-    #convert_paragraph_reference(new_session_maker)
+    convert_paragraph_reference(new_session_maker)
     
-    #convert_interaction(new_session_maker, Regulationevidence, 'REGULATION', 'convert.interaction.regulation_interaction', 10000, True)
-    
-    convert_regulation_family(new_session_maker, 100)
-    
+    convert_bioentity_reference(new_session_maker, Regulationevidence, 'REGULATION', 'convert.regulation.bioentity_reference', 10000, get_bioent_ids_f)
+            
     log.info('complete')
     
 if __name__ == "__main__":

@@ -428,7 +428,6 @@ def convert_strain(old_session_maker, new_session_maker):
 
 def convert(old_session_maker, new_session_maker):
     log = set_up_logging('convert.evelements')
-
     
     log.info('begin')
     

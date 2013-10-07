@@ -119,7 +119,7 @@ def convert_litevidence(old_session_maker, new_session_maker, chunk_size):
         
     log.info('complete')
 
-def convert(old_session_maker, new_session_maker, ask=True):
+def convert(old_session_maker, new_session_maker):
     log = set_up_logging('convert.literature')
     
     log.info('begin')

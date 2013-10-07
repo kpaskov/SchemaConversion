@@ -7,6 +7,7 @@ from convert_core import set_up_logging, create_or_update
 from schema_conversion import prepare_schema_connection, new_config, old_config, \
     create_format_name
 from schema_conversion.output_manager import OutputCreator
+from sqlalchemy.sql.expression import or_
 from utils.link_maker import allele_link, chemical_link
 import logging
 import model_new_schema
@@ -128,7 +129,8 @@ def convert_chemical(old_session_maker, new_session_maker):
         keys_already_seen = set()
             
         #Grab old objects
-        old_objs = old_session.query(OldExperimentProperty).filter(OldExperimentProperty.type=='Chemical_pending').all()
+        old_objs = old_session.query(OldExperimentProperty).filter(or_(OldExperimentProperty.type=='Chemical_pending', 
+                                                                       OldExperimentProperty.type == 'chebi_ontology')).all()
         
         for old_obj in old_objs:
             #Convert old objects into new ones
@@ -170,7 +172,7 @@ def convert_chemical(old_session_maker, new_session_maker):
 ---------------------Convert------------------------------
 """  
 
-def convert(old_session_maker, new_session_maker, ask):
+def convert(old_session_maker, new_session_maker):
     log = set_up_logging('convert.chemical')
     
     log.info('begin')
@@ -182,4 +184,4 @@ def convert(old_session_maker, new_session_maker, ask):
 if __name__ == "__main__":
     old_session_maker = prepare_schema_connection(model_old_schema, old_config)
     new_session_maker = prepare_schema_connection(model_new_schema, new_config)
-    convert(old_session_maker, new_session_maker, False)
+    convert(old_session_maker, new_session_maker)

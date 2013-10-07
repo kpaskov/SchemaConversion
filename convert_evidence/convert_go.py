@@ -6,8 +6,7 @@ Created on Feb 27, 2013
 from convert_aux.auxillary_tables import convert_bioentity_reference
 from convert_core import set_up_logging, create_or_update
 from mpmath import ceil
-from schema_conversion import prepare_schema_connection, create_format_name, \
-    new_config, old_config
+from schema_conversion import prepare_schema_connection, new_config, old_config
 from schema_conversion.output_manager import OutputCreator
 from sqlalchemy.orm import joinedload
 from sqlalchemy.sql.expression import func
@@ -111,7 +110,7 @@ def create_evidence(old_go_ref, key_to_go, reference_ids, bioent_ids):
     
     old_go_feature = old_go_ref.go_annotation
     
-    go_key = (create_format_name(old_go_feature.go.go_term), 'GO')
+    go_key = (str(old_go_feature.go.go_go_id), 'GO')
     if go_key not in key_to_go:
         print 'Go term does not exist. ' + str(go_key)
         return None
@@ -221,14 +220,14 @@ def convert_evidence(old_session_maker, new_session_maker, chunk_size):
 ---------------------Convert------------------------------
 """   
 
-def convert(old_session_maker, new_session_maker, ask):
+def convert(old_session_maker, new_session_maker):
     log = set_up_logging('convert.go')
     
     log.info('begin')
         
-    convert_go(old_session_maker, new_session_maker) 
+    #convert_go(old_session_maker, new_session_maker) 
     
-    convert_evidence(old_session_maker, new_session_maker, 1000)
+    convert_evidence(old_session_maker, new_session_maker, 10000)
     
     from model_new_schema.go import Goevidence
     get_bioent_ids_f = lambda x: [x.bioentity_id]
@@ -239,7 +238,7 @@ def convert(old_session_maker, new_session_maker, ask):
 if __name__ == "__main__":
     old_session_maker = prepare_schema_connection(model_old_schema, old_config)
     new_session_maker = prepare_schema_connection(model_new_schema, new_config)
-    convert(old_session_maker, new_session_maker, False)
+    convert(old_session_maker, new_session_maker)
     
 
     
