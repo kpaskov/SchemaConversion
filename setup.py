@@ -10,7 +10,8 @@ requires = [
     'sprout_orm',
     'bud_orm',
     'requests',
-    'mpmath'
+    'mpmath',
+    'cx_oracle'
     ]
 
 tests_require = [

@@ -31,7 +31,7 @@ def create_domain(row):
     
     #Need to check these links
     if source == 'JASPAR':
-        link = "http://jaspar.genereg.net/cgi-bin/jaspar_db.pl?rm=present&collection=CORE&ID=" + display_name
+        link = 'http://jaspar.binf.ku.dk/cgi-bin/jaspar_db.pl?rm=present&collection=CORE&ID=' + display_name
     elif source == 'HMMSmart':
         source = 'SMART'
         link = "http://smart.embl-heidelberg.de/smart/do_annotation.pl?DOMAIN=" + display_name
@@ -90,7 +90,7 @@ def create_domain_from_tf_file(row):
     interpro_id = None
     interpro_description = None
     
-    link = 'http://jaspar.genereg.net/cgi-bin/jaspar_db.pl?rm=present&collection=CORE&ID=' + display_name
+    link = 'http://jaspar.binf.ku.dk/cgi-bin/jaspar_db.pl?rm=present&collection=CORE&ID=' + display_name
     
     domain = Domain(format_name, display_name, description, interpro_id, interpro_description, link, source)
     return [domain]
@@ -388,7 +388,7 @@ def convert(old_session_maker, new_session_maker):
     log = set_up_logging('convert.protein')
     log.info('begin')
         
-    #convert_domain(new_session_maker, 5000)
+    convert_domain(new_session_maker, 5000)
     
     convert_domain_evidence(new_session_maker, 5000)
     

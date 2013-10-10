@@ -90,7 +90,7 @@ def create_evidence(row, row_id, key_to_experiment, key_to_bioent, pubmed_to_ref
     if conditions == '""':
         conditions = None
     else:
-        conditions.replace('??', "&#956;")
+        conditions.replace('??', "\00b5")
         
     strain_id = None
     if pubmed_id in pubmed_to_strain:

@@ -29,7 +29,7 @@ def create_abstract(old_reference, reference_ids):
     from model_new_schema.reference import Abstract as NewAbstract
     if old_reference.abst is not None:
         if old_reference.id in reference_ids:
-            return [NewAbstract(old_reference.id, str(old_reference.abst))]
+            return [NewAbstract(old_reference.id, str(old_reference.abstract))]
     return None
 
 def convert_abstract(old_session_maker, new_session_maker, chunk_size):

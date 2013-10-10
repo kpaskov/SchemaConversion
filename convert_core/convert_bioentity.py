@@ -56,7 +56,7 @@ def create_locus(old_bioentity):
         genetic_position = ann.genetic_position
     
     bioentity = Locus(old_bioentity.id, display_name, format_name, link, old_bioentity.source, old_bioentity.status, 
-                         locus_type, attribute, short_description, headline, description, genetic_position, 
+                         locus_type, old_bioentity.dbxref_id, attribute, short_description, headline, description, genetic_position, 
                          old_bioentity.date_created, old_bioentity.created_by)
     return [bioentity]
 
@@ -77,7 +77,7 @@ def convert_locus(old_session_maker, new_session_maker):
                 
         #Values to check
         values_to_check = ['display_name', 'link', 'source', 'status', 'date_created', 'created_by',
-                       'attribute', 'name_description', 'headline', 'description', 
+                       'attribute', 'name_description', 'headline', 'description',  'dbxref',
                        'genetic_position', 'locus_type']
         
         untouched_obj_ids = set(id_to_current_obj.keys())
